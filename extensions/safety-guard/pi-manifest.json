@@ -1,0 +1,10 @@
+{
+  "name": "safety-guard",
+  "type": "extension",
+  "version": "1.0.0",
+  "description": "A guard extension to enforce safety constraints.",
+  "entryPoint": "./index.js",
+  "dependencies": {
+    "pi-core": "^1.0.0"
+  }
+}

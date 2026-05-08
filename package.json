@@ -1,0 +1,14 @@
+{
+  "name": "pi-dev-environment",
+  "version": "0.1.0",
+  "description": "Development environment skill and extensions for pi agent — cwd-first file search with web search for concepts",
+  "keywords": ["pi-package", "developer", "environment", "web-search"],
+  "pi": {
+    "skills": ["./skills"],
+    "extensions": ["./extensions"]
+  },
+  "dependencies": {},
+  "peerDependencies": {
+    "@mariozechner/pi-coding-agent": "*"
+  }
+}
