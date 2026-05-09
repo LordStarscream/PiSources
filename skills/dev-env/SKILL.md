@@ -152,6 +152,56 @@ Before writing any code, produce a written plan:
 - Present the plan to the user and wait for approval
 - **Do not implement until the plan is approved**
 
+### Phase 1.5: Analyze & Discuss (for bug reports / issues / behavioral problems)
+
+**Run this phase when the user reports a bug, unexpected behavior, or wants a fix for something they've manually tested.** Do not jump straight to coding.
+
+#### Step A — Investigate
+
+Before proposing any fix, investigate thoroughly:
+
+1. **Read the relevant files** — source code, logs, error messages, configuration
+2. **Reproduce the issue** — if possible, run the app, check the UI, test the specific scenario the user described
+3. **Identify root cause** — don't just treat symptoms, find the underlying problem
+4. **Check for related issues** — are there similar patterns elsewhere in the codebase?
+5. **Consider edge cases** — what happens with empty input, invalid data, concurrent access?
+
+Use the `read` tool to examine files. Use `bash` to run tests, start the dev server, or reproduce the issue.
+
+#### Step B — Present Findings
+
+Share your analysis with the user in a clear, structured format:
+
+```
+## Analysis
+
+**Issue:** <one-line summary>
+**Root Cause:** <what's actually wrong and why>
+**Affected Files:** <list files with line numbers if applicable>
+**Reproduction Steps:** <how to reproduce, if not already done>
+
+## Proposed Fix
+
+<Describe your intended fix approach — what changes, why, and any trade-offs>
+
+## Questions / Discussion Points
+
+- <Any uncertainties or alternatives you want to discuss>
+- <Edge cases that need clarification>
+- <Potential side effects of the fix>
+```
+
+#### Step C — Wait for Feedback
+
+**Do NOT implement yet.** Wait for the user to:
+- Approve the analysis and proposed fix → proceed to Phase 2
+- Provide additional details or clarification → go back to Step A
+- Disagree with the root cause → re-investigate
+- Suggest a different fix approach → evaluate and adjust
+- Say "skip analysis, just fix it" → proceed to Phase 2 with caution
+
+This discussion phase prevents wasted effort on wrong fixes and ensures the user is aligned before any code changes.
+
 ### Phase 2: Write Task List & Project Memory
 
 Before writing any code, create or update the handoff files at the project root:
@@ -309,6 +359,7 @@ Review your own work after tests pass:
 
 ## Behavior Rules
 
+- **Analyze before fixing** — when the user reports a bug or behavioral issue, investigate and discuss (Phase 1.5) before proposing any fix
 - **Plan before implementing** — never start coding without a written plan
 - **Read existing session files first** — at session start, read `.pi/TASK_LIST.md` and `.pi/MEMORY.md` from the project root (check CWD and subdirectories) before asking the user anything
 - **If `.pi/TASK_LIST.md` exists with `in-progress` status**, continue from the first unchecked step — do NOT ask "what to do next"
@@ -328,6 +379,7 @@ Review your own work after tests pass:
 
 - **Searching the web for project-specific questions** — Always search CWD first
 - **Asking "what to do next" without checking `.pi/TASK_LIST.md`** — Always read the task list first if it exists, especially when Status is `in-progress`
+- **Proposing a fix before analyzing** — When the user reports a bug, investigate the root cause first, present findings, then discuss the fix approach
 - **Fetching documentation without a concrete need** — Only search web when you need external info
 - **Not checking CWD and subdirectories for .pi/TASK_LIST.md** — If you're in a parent folder, look in subdirectories for `.pi/` files
 - **Guessing file locations** — If you can't find it in the project, ask the user
