@@ -20,28 +20,25 @@ The project root is identified by the presence of `.pi/TASK_LIST.md`, `.pi/MEMOR
 ```bash
 PROJECT_ROOT=""
 
-# 1. Search subdirectories of CWD for .pi/TASK_LIST.md (highest priority)
-# This handles cases where CWD is a parent directory containing the actual project
-for sub in "$(pwd)"/*/; do
-  if [ -f "$sub.pi/TASK_LIST.md" ]; then
-    PROJECT_ROOT="${sub%/}"
-    break
-  fi
-  if [ -f "$sub.pi/MEMORY.md" ]; then
-    PROJECT_ROOT="${sub%/}"
-    break
-  fi
-done
-
-# 2. Check CWD itself for project markers
-if [ -z "$PROJECT_ROOT" ]; then
-  if [ -f "$(pwd)/package.json" ] || [ -f "$(pwd)/go.mod" ] || \
-     [ -f "$(pwd)/Cargo.toml" ] || [ -d "$(pwd)/.git" ]; then
-    PROJECT_ROOT="$(pwd)"
-  fi
+# 1. Check CWD first — this is where the agent was started
+if [ -f "$(pwd)/.pi/TASK_LIST.md" ] || [ -f "$(pwd)/.pi/MEMORY.md" ] || \
+   [ -f "$(pwd)/package.json" ] || [ -f "$(pwd)/go.mod" ] || \
+   [ -f "$(pwd)/Cargo.toml" ] || [ -d "$(pwd)/.git" ]; then
+  PROJECT_ROOT="$(pwd)"
 fi
 
-# 3. Walk up from CWD looking for project markers (excluding .pi/ — too noisy)
+# 2. If CWD is just a parent container, search subdirectories
+if [ -z "$PROJECT_ROOT" ]; then
+  for sub in "$(pwd)"/*/; do
+    if [ -f "$sub.pi/TASK_LIST.md" ] || [ -f "$sub.pi/MEMORY.md" ] || \
+       [ -d "$sub.git" ] || [ -f "$sub.package.json" ]; then
+      PROJECT_ROOT="${sub%/}"
+      break
+    fi
+  done
+fi
+
+# 3. Walk up from CWD (excluding .pi/ — too noisy)
 if [ -z "$PROJECT_ROOT" ]; then
   current="$(pwd)"
   while true; do
