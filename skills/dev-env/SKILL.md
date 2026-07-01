@@ -1,9 +1,27 @@
 ---
 name: dev-env
-description: Development environment setup — acts as a software developer with cwd-first file search, user escalation on missing info, web search for concepts, and a structured development workflow (plan → task list → implement → test → review → commit → push).
+description: |
+  Development environment skill. SESSION START: search CWD/subdirs
+  for .pi/TASK_LIST.md and .pi/MEMORY.md — read both. If Status=
+  in-progress continue from first [ ] step, NEVER ask what to do.
+  WORKFLOW: 1) Plan (write plan, get approval) → 2) Task List
+  (.pi/TASK_LIST.md) → 3) Implement → 4) Tests (must pass) → 5)
+  Code Review (read ALL modified files) → 6) Commit (only if
+  changes) → 7) Push (NEVER without permission). SEARCH: CWD-first.
+  ANTI-PATTERNS: no web for project, no ask-what-next, no code
+  without plan, no skip-tests, no push-without-permission.
 ---
 
 # Development Environment Skill
+
+## CRITICAL — Always Execute This First
+
+**At the very first step of every session**, you MUST:
+
+1. **Read** `~/.pi/agent/skills/dev-env/SKILL.md` with the `read` tool (this skill file contains your complete workflow)
+2. **Find the project root** — check CWD for `.pi/TASK_LIST.md`, `.pi/MEMORY.md`, `package.json`, `.git`
+3. **If project root found**, read `.pi/TASK_LIST.md` and `.pi/MEMORY.md` from it
+4. **Check for `in-progress` status** in task list — continue from first unchecked step
 
 ## Role
 

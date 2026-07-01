@@ -119,6 +119,31 @@ pi list  # verify installation
 
 ---
 
+## Skill Loading Fix (2026-05-12)
+
+### Problem
+Pi loads **only name + description** of skills into the system prompt. The full SKILL.md is never auto-loaded — the agent must use `read` to load it. Models don't always do this reliably.
+
+### Solution Applied
+1. **Compact description** — All critical workflow instructions moved into the `description` field (multi-line YAML `|` block scalar). Currently 578 chars (limit: 1024).
+2. **`enableSkillCommands: true`** — Added to `~/.pi/agent/settings.json`. Registers `/skill:dev-env` command.
+3. **Usage:** Always start sessions with `pi /skill:dev-env` for guaranteed skill loading.
+
+### File Locations
+| File | Purpose |
+|---|---|
+| `~/.pi/agent/skills/dev-env/SKILL.md` | Global skill (deployed) |
+| `skills/dev-env/SKILL.md` | Project source of truth |
+| Both are identical |
+
+### How It Works
+- At startup pi discovers skills and puts name+description in system prompt
+- `pi /skill:dev-env` forces full SKILL.md load
+- Session start rules (always in description):
+  - Find project root via `.pi/TASK_LIST.md`, `.pi/MEMORY.md`, `.git`
+  - Read task list — if `in-progress` continue from first `[ ]` step, NEVER ask what to do
+  - 7-phase workflow enforced
+
 ## Skill & Extension Dev Workflow (2026-05-07)
 
 ### Context
