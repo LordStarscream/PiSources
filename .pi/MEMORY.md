@@ -7,7 +7,7 @@ This is a Pi package (`pi-dev-environment`) that bundles a development environme
 ## Structure
 
 ```
-piEnvironment/
+PiSources/
 ├── package.json                    ← Pi package manifest
 ├── extensions/
 │   ├── safety-guard/               ← Blocks dangerous bash commands
@@ -103,7 +103,7 @@ The `dev-env` skill enforces this exact sequence for every task:
 ## Installation
 
 ```bash
-cd /home/mario/Projects/piEnvironment
+cd /home/mario/Projects/PiSources
 pi install ./
 pi list  # verify installation
 ```
@@ -147,10 +147,10 @@ Pi loads **only name + description** of skills into the system prompt. The full 
 ## Skill & Extension Dev Workflow (2026-05-07)
 
 ### Context
-- `web-bash` skill exists in two places: `~/.pi/agent/skills/web-bash/` (global) and `piEnvironment/skills/web-bash/` (local project).
+- `web-bash` skill exists in two places: `~/.pi/agent/skills/web-bash/` (global) and `PiSources/skills/web-bash/` (local project).
 - They differ — the local version has better DuckDuckGo queries, extra tips, and an anti-patterns section.
 - Collision resolution: global (`~/.pi/agent/skills/`) is discovered first, always wins. Local is silently ignored.
-- `piEnvironment` is registered as a local package in global settings (`"../../Projects/piEnvironment"`), which loads the local skill.
+- `PiSources` is registered as a local package in global settings (`"../../Projects/PiSources"`), which loads the local skill.
 
 ### Proposal
 
@@ -159,7 +159,7 @@ Pi loads **only name + description** of skills into the system prompt. The full 
 **For installation:** Copy to `~/.pi/agent/skills/` and `~/.pi/agent/extensions/`.
 
 ```
-piEnvironment/
+PiSources/
 ├── skills/            ← dev source of truth
 │   └── web-bash/
 ├── extensions/        ← dev source of truth
@@ -179,7 +179,7 @@ cp extensions/*.ts .pi/extensions/ 2>/dev/null
 
 **Then run:**
 ```bash
-cd /home/mario/Projects/piEnvironment
+cd /home/mario/Projects/PiSources
 pi   # auto-discovers .pi/skills/ and .pi/extensions/
 ```
 
@@ -192,4 +192,4 @@ cp .pi/extensions/*.ts ~/.pi/agent/extensions/ 2>/dev/null
 ### Key Points
 - For personal skills/extensions, flat dirs in `~/.pi/agent/skills/` and `~/.pi/agent/extensions/` are the intended way — no package.json needed.
 - Packages are only for sharing/versioning with others.
-- Remove `"../../Projects/piEnvironment"` from global package settings once skills are copied to `~/.pi/agent/skills/`.
+- Remove `"../../Projects/PiSources"` from global package settings once skills are copied to `~/.pi/agent/skills/`.
