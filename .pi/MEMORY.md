@@ -193,3 +193,57 @@ cp .pi/extensions/*.ts ~/.pi/agent/extensions/ 2>/dev/null
 - For personal skills/extensions, flat dirs in `~/.pi/agent/skills/` and `~/.pi/agent/extensions/` are the intended way — no package.json needed.
 - Packages are only for sharing/versioning with others.
 - Remove `"../../Projects/PiSources"` from global package settings once skills are copied to `~/.pi/agent/skills/`.
+
+---
+
+## Skill Consolidation Refactoring (2026-07-01)
+
+### Problem
+Four skills existed with significant overlap:
+| Skill | Lines | Problem |
+|---|---:|---|
+| `coding-core` | ~76 | Nearly a subset of dev-env: same "no questions", "no restate", "no anti-patterns" |
+| `dev-env` | ~470 | Contains inline web-bash bash commands (duplicates web-bash skill), plus coding-core rules |
+| `spec-to-app` | ~220 | Depends on dev-env (Step 2: "read dev-env/SKILL.md"), redundant session recovery |
+| `web-bash` | ~60 | Clean, standalone, no issues |
+
+### Decision
+Merge into **3 skills** with clear separation of concerns:
+
+```
+dev-env      → "Wie arbeite ich?" — Session Recovery + Task List + 7-Phasen-Workflow + Git + Search-Entscheidung
+web-bash     → "Wie suche ich im Web?" — Bash-Befehle (unverändert)
+spec-to-app  → "Wie generiere ich Apps?" — Spec-driven, selbstständig
+```
+
+**coding-core wird gelöscht.** Sein Inhalt (behavior rules, anti-patterns: no asking, no restate) geht in `dev-env`.
+
+**dev-env wird reduziert** (~470 → ~200 Zeilen):
+- Behält: session recovery, cwd-search, 7-phase workflow, bug analysis, git, rules, anti-patterns
+- Entfernt: inline web-bash bash commands → referenziert `web-bash/SKILL.md` stattdessen
+- Nimmt auf: coding-core behavior rules
+
+**spec-to-app wird selbstständig** (~220 → ~140 Zeilen):
+- Entfernt: `read dev-env/SKILL.md` als Schritt 2
+- Behält: 15-phase spec workflow, NO QUESTS, spec interpretation rules, anti-patterns
+- Selbstständiges session recovery (TASK_LIST.md + MEMORY.md check)
+
+### Rationale
+- **Task List creation** bleibt in `dev-env` — Session Recovery liest TASK_LIST.md um weiterzumachen, Phase 2 erstellt sie, jeder Schritt aktualisiert sie. Kein sinnvoller Grund zur Trennung.
+- **Spec-to-app** ist ein eigenständiger Workflow (15 Phasen vs. 7 Phasen), der keine dev-env-Abhängigkeit braucht.
+- **Clearer responsibility** — jeder Skill hat eine einzelne Frage:
+  - dev-env: "Wie arbeite ich?"
+  - web-bash: "Wie suche ich im Web?"
+  - spec-to-app: "Wie generiere ich eine App aus einer Spec?"
+
+### Result
+- 4 skills → 3 skills
+- ~830 Zeilen → ~500 Zeilen (~40% reduziert)
+- Keine Redundanz mehr
+- Klare Trennung der Verantwortlichkeiten
+
+### Files Changed
+- `skills/dev-env/SKILL.md` — refactored (consolidated, web-bash removed, coding-core merged)
+- `skills/spec-to-app/SKILL.md` — refactored (self-contained, dev-env dependency removed)
+- `skills/web-bash/SKILL.md` — no changes
+- `skills/coding-core/SKILL.md` — deleted
