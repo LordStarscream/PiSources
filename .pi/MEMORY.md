@@ -2,7 +2,7 @@
 
 ## Purpose
 
-This is a Pi package (`pi-dev-environment`) that bundles a development environment skill and web search extensions for the Pi coding agent. It provides structured development workflows, cwd-first file search, and web access for concept discussions.
+This is a Pi package (`pi-dev-environment`) that bundles development skills and web search extensions for the Pi coding agent. It provides structured development workflows, cwd-first file search, and web access for concept discussions.
 
 ## Structure
 
@@ -19,6 +19,8 @@ PiSources/
 │       └── index.ts                ← web_search, fetch_url, fetch_many
 └── skills/
     ├── dev-env/SKILL.md            ← Developer behavior & workflow
+    ├── spec-to-app/SKILL.md        ← Spec-driven app generation
+    ├── task-planning/SKILL.md      ← Task tracking with batches & worktrees
     └── web-bash/
         ├── SKILL.md                ← Bash web command patterns
         └── tools/
@@ -30,9 +32,20 @@ PiSources/
 | Component | Type | Purpose |
 |---|---|---|
 | `dev-env` | Skill | Overall developer behavior — cwd-first search, workflow phases, git operations |
+| `spec-to-app` | Skill | Spec-driven app generation — self-contained, NO QUESTS |
+| `task-planning` | Skill | Tracked tasks with batches, branches, and worktrees (`.tasks/`) |
 | `web-bash` | Skill | Bash commands for quick web lookups (DuckDuckGo, SO API, Wikipedia, GitHub raw) |
 | `web-search` | Extension | Formal tools wrapping web-bash for multi-source research |
 | `safety-guard` | Extension | Blocks dangerous bash commands via event interception |
+
+**Skill responsibilities:**
+
+| Skill | Question | Delegates to |
+|---|---|---|
+| `dev-env` | "Wie arbeite ich?" | `task-planning` für Task-Erstellung und -Pfle ge |
+| `spec-to-app` | "Wie generiere ich eine App?" | `task-planning` für Task-Erstellung und -Pfle ge |
+| `task-planning` | "Wie strukturiere ich Tasks?" | — (autoritativer Task-Manager) |
+| `web-bash` | "Wie suche ich im Web?" | — |
 
 **Decision flow:**
 - **Project-specific question?** → Search CWD first
@@ -40,47 +53,78 @@ PiSources/
 - **Multi-source research?** → Use `web-search` extension tools (`web_search`, `fetch_url`, `fetch_many`)
 - **External concepts?** → Either web approach
 
-## Development Workflow (7 Phases)
+## Development Workflow
+
+### dev-env (7 Phasen)
 
 The `dev-env` skill enforces this exact sequence for every task:
 
 1. **Plan** — Write plan with file list, rationale, external needs → get approval
-2. **Task List** — Create `.pi/TASK_LIST.md` with steps (handoff file)
-3. **Implement** — Follow task list, mark each step done
+2. **Project Memory** — Create/update `.pi/MEMORY.md`
+3. **Implement** — Follow tasks managed by `task-planning` skill in `.tasks/`
 4. **Tests** — Run all tests, must be green before proceeding
 5. **Code Review** — Read all modified files, check for correctness/style/dead code
 6. **Commit** — Only if `git status --porcelain` shows changes
 7. **Push** — Ask first, never push without explicit permission
 
+### spec-to-app (14 Phasen)
+
+The `spec-to-app` skill enforces this sequence for spec-driven app generation:
+
+0. **Load spec** → 1. **Analyze** → 2. **Plan & Task List** (via task-planning) →
+3. **Scaffold** → 4. **Data Layer** → 5. **API Routes** → 6. **Pages & Layout** →
+7. **Styling** → 8. **Unit Tests** → 9. **Fix** → 10. **Code Review** →
+11. **Functional Tests** → 12. **Fix** → 13. **Build Verification** → 14. **Report**
+
+### task-planning (Aufgaben-Betrieb)
+
+The `task-planning` skill manages all task tracking in `.tasks/`:
+
+1. **Session start** — Read `_index.md` → find active Aufgabe → worktree check
+2. **Plan approved** — Create Aufgabe file, tasks, batches, worktrees
+3. **Implement** — Mark `[ ] → [~] → [x]`, add completion notes, batch summaries
+4. **Hard gate** — Verify branch, all tasks `[x]`, tests/review gates
+5. **Wrap-up** — Mark `erledigt`, close worktrees, write documentation
+
+**File structure:**
+
+```
+.tasks/
+  _index.md              ← active Aufgabe + list of all Aufgaben
+  <slug>.md              ← one file per Aufgabe (batches + tasks)
+```
+
+**Status markers:**
+
+| Marker | Meaning |
+|---|---|
+| `[ ]` | open |
+| `[~]` | in progress |
+| `[x]` | done (with completion note) |
+
+**Aufgabe file:**
+
+```markdown
+# Aufgabe: <Name>
+_Status: aktiv · Last updated: <date>_
+
+**Branches:**
+- repo-A → `feature/<slug>`
+
+## Batch A — <Zweck>
+- [ ] Task 1: <description>
+- [ ] Task 2: <description>
+```
+
 ## Session Start Checklist
 
 1. Check git repository: `git rev-parse --git-dir 2>/dev/null`
    - If missing → ask user to initialize
-2. If `.pi/TASK_LIST.md` exists → read it, continue from first unfinished step
-3. Search CWD first for any project-specific information
-
-## Task List Format (`.pi/TASK_LIST.md`)
-
-```markdown
-# Task List
-
-**Task:** <one-line summary>
-**Status:** `in-progress` | `done`
-**Started:** <date>
-**Last Updated:** <date>
-
-## Plan
-<the approved plan>
-
-## Steps
-
-- [ ] Step 1: <description>
-- [ ] Step 2: <description>
-- [ ] Step 3: <description>
-
-## Notes
-<any relevant context, decisions, or external research>
-```
+2. Read `.pi/MEMORY.md` for project context
+3. Check `.tasks/_index.md` for active Aufgabe (via task-planning skill)
+   - If Aufgabe is `aktiv` → continue from first `[ ]` step
+   - If none active → ask user to pick or start fresh
+4. Search CWD first for any project-specific information
 
 ## Key Rules
 
@@ -88,12 +132,14 @@ The `dev-env` skill enforces this exact sequence for every task:
 - **Run tests before review** — correctness first, quality second
 - **Never push without permission** — always ask first
 - **Be proactive in CWD search** — search thoroughly before asking user
-- **Use `.pi/TASK_LIST.md` for handoff** — any session can pick up work
+- **Task management via task-planning skill** — never create `.pi/TASK_LIST.md` directly
+- **Project memory is `.pi/MEMORY.md`** — the long-term context store for the project
 
 ## Anti-Patterns (forbidden)
 
 - Searching web for project-specific questions
 - Implementing without a plan or task list
+- Creating task lists manually (use task-planning skill)
 - Skipping tests before code review
 - Pushing to remote without explicit permission
 - Committing when there are no changes
@@ -112,6 +158,8 @@ pi list  # verify installation
 
 - `package.json` — Pi package manifest with skills and extensions
 - `skills/dev-env/SKILL.md` — Development environment skill (7-phase workflow)
+- `skills/spec-to-app/SKILL.md` — Spec-driven app generation (self-contained)
+- `skills/task-planning/SKILL.md` — Task tracking with batches, branches, and worktrees
 - `skills/web-bash/SKILL.md` — Web bash commands skill
 - `skills/web-bash/tools/fetch_md.sh` — URL to Markdown converter
 - `extensions/web-search/index.ts` — Formal web search tools
@@ -132,17 +180,17 @@ Pi loads **only name + description** of skills into the system prompt. The full 
 ### File Locations
 | File | Purpose |
 |---|---|
-| `~/.pi/agent/skills/dev-env/SKILL.md` | Global skill (deployed) |
-| `skills/dev-env/SKILL.md` | Project source of truth |
+| `~/.pi/agent/skills/<name>/SKILL.md` | Global skill (deployed) |
+| `skills/<name>/SKILL.md` | Project source of truth |
 | Both are identical |
 
 ### How It Works
 - At startup pi discovers skills and puts name+description in system prompt
-- `pi /skill:dev-env` forces full SKILL.md load
+- `pi /skill:<name>` forces full SKILL.md load
 - Session start rules (always in description):
-  - Find project root via `.pi/TASK_LIST.md`, `.pi/MEMORY.md`, `.git`
-  - Read task list — if `in-progress` continue from first `[ ]` step, NEVER ask what to do
-  - 7-phase workflow enforced
+  - Find project root via `.pi/MEMORY.md`, `.git`
+  - Check active Aufgabe via task-planning skill (`_index.md`)
+  - Continue from first `[ ]` step, NEVER ask what to do
 
 ## Skill & Extension Dev Workflow (2026-05-07)
 
@@ -161,11 +209,14 @@ Pi loads **only name + description** of skills into the system prompt. The full 
 ```
 PiSources/
 ├── skills/            ← dev source of truth
+│   ├── dev-env/
+│   ├── spec-to-app/
+│   ├── task-planning/
 │   └── web-bash/
 ├── extensions/        ← dev source of truth
 ├── .pi/
 │   ├── skills/        ← local test copy (gitignored)
-│   │   └── web-bash/
+│   │   └── <name>/
 │   └── extensions/    ← local test copy
 └── MEMORY.md
 ```
@@ -211,7 +262,7 @@ Four skills existed with significant overlap:
 Merge into **3 skills** with clear separation of concerns:
 
 ```
-dev-env      → "Wie arbeite ich?" — Session Recovery + Task List + 7-Phasen-Workflow + Git + Search-Entscheidung
+dev-env      → "Wie arbeite ich?" — Session Recovery + 7-Phasen-Workflow + Git + Search-Entscheidung
 web-bash     → "Wie suche ich im Web?" — Bash-Befehle (unverändert)
 spec-to-app  → "Wie generiere ich Apps?" — Spec-driven, selbstständig
 ```
@@ -226,10 +277,9 @@ spec-to-app  → "Wie generiere ich Apps?" — Spec-driven, selbstständig
 **spec-to-app wird selbstständig** (~220 → ~140 Zeilen):
 - Entfernt: `read dev-env/SKILL.md` als Schritt 2
 - Behält: 15-phase spec workflow, NO QUESTS, spec interpretation rules, anti-patterns
-- Selbstständiges session recovery (TASK_LIST.md + MEMORY.md check)
+- Selbstständiges session recovery (Aufgabe + MEMORY.md check via task-planning)
 
 ### Rationale
-- **Task List creation** bleibt in `dev-env` — Session Recovery liest TASK_LIST.md um weiterzumachen, Phase 2 erstellt sie, jeder Schritt aktualisiert sie. Kein sinnvoller Grund zur Trennung.
 - **Spec-to-app** ist ein eigenständiger Workflow (15 Phasen vs. 7 Phasen), der keine dev-env-Abhängigkeit braucht.
 - **Clearer responsibility** — jeder Skill hat eine einzelne Frage:
   - dev-env: "Wie arbeite ich?"
@@ -247,3 +297,25 @@ spec-to-app  → "Wie generiere ich Apps?" — Spec-driven, selbstständig
 - `skills/spec-to-app/SKILL.md` — refactored (self-contained, dev-env dependency removed)
 - `skills/web-bash/SKILL.md` — no changes
 - `skills/coding-core/SKILL.md` — deleted
+
+---
+
+## Task Planning Skill Split (2026-07-08)
+
+### Problem
+`dev-env` und `spec-to-app` erstellten beide `.pi/TASK_LIST.md` manuell — Redundanz, kein Batch-Konzept, keine Worktree-Verwaltung, kein Interruption-Handling.
+
+### Decision
+Task-Management in einen eigenen Skill `task-planning` auslagern. Beide anderen Skills delegieren Task-Erstellung und -Pfle ge an diesen Skill.
+
+### Result
+- **`task-planning`** — Autoritativer Task-Manager: `.tasks/`-Ordner, Aufgabe-Batches, Branches, Worktrees, Interruption-Handling, Batch-Zusammenfassungen, Hard-Gate, Wrap-Up-Doku
+- **`dev-env`** — Delegiert Task-Erstellung an task-planning, Phase 2 heißt jetzt nur noch "Project Memory"
+- **`spec-to-app`** — Delegiert Task-Erstellung an task-planning, Phase 1 heißt nur noch "Project Planning"
+- **Keine doppelte Task-Pfle ge mehr** — Eine Quelle, keine Duplikation
+
+### Files Changed
+- `skills/task-planning/SKILL.md` — neu (Aufgabe-Batches, Worktrees, Interruption-Handling)
+- `skills/dev-env/SKILL.md` — task-planning Delegierung, MEMORY.md nur
+- `skills/spec-to-app/SKILL.md` — task-planning Delegierung
+- `.pi/MEMORY.md` — aktualisiert
