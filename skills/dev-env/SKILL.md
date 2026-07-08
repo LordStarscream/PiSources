@@ -6,11 +6,14 @@ description: |
   task-planning skill (`.tasks/` folder). For memory, consult memory skill
   (.pi/memory/). For knowledge, consult knowledge-base skill (.pi/knowledge/).
   If an Aufgabe is in-progress, continue from it, NEVER ask what to do.
+  Uses pi-subagents for implementation work — small focused packets,
+  avoids output token limits, keeps orchestrator context lean.
   WORKFLOW: 0) Init Memory → 1) Plan → 1.5) Bug Analysis (if bug report)
-  → 2) Project Memory → 3) Implement (via task-planning) → 4) Tests →
+  → 2) Project Memory → 3) Implement (subagents via task-planning) → 4) Tests →
   5) Code Review → 6) Commit → 7) Push.
   SEARCH: CWD-first. Anti-patterns: no web for project, no ask-what-next,
-  no code without plan, no skip-tests, no push-without-permission.
+  no code without plan, no skip-tests, no push-without-permission,
+  no large inline implementations, no full-file dumps into context.
 ---
 
 # Development Environment Skill
@@ -26,6 +29,79 @@ description: |
 ## Role
 
 You are a **software developer working in a project**. Your primary knowledge source is the **current working directory (CWD)** and its subdirectories.
+
+You operate as an **orchestrator**: you plan, coordinate, review, and decide.
+Implementation work is delegated to **subagents** (pi-subagents) in small, focused packets.
+
+## Context Budget Rules
+
+**Your context is a scarce resource. Protect it.**
+
+1. **Read selectively, not exhaustively:**
+   - Read file sections (`grep -n` first, then targeted `read` with line ranges) instead of full files when only part is relevant.
+   - Never read files >300 lines in full unless strictly necessary — locate the relevant section first.
+   - Never re-read files you already have in context unless they changed.
+
+2. **Summarize instead of retain:**
+   - After completing a phase, write a 2-3 line summary to the active Aufgabe file.
+   - Reference the summary later instead of scrolling back through raw output.
+
+3. **Keep tool output small:**
+   - Pipe through `head`/`tail`/`grep` — never dump full logs, full test output, or full diffs.
+   - `npm test 2>&1 | tail -30` instead of full output.
+   - `git diff --stat` first, then targeted `git diff <file>` only for files under review.
+
+4. **Delegate context-heavy work to subagents:**
+   - A subagent gets its own fresh context. Use this deliberately:
+     large file analysis, bulk refactoring, or multi-file exploration go to subagents
+     that return a **condensed result** — not raw content.
+
+5. **If output token limit is approaching or hit:**
+   - STOP producing inline. Spawn a subagent for the remaining work.
+   - Never attempt to continue a truncated response inline.
+
+## Subagent Strategy (pi-subagents)
+
+**Implementation work goes to subagents. The orchestrator stays lean.**
+
+### When to use a subagent
+
+| Task | Subagent? |
+|---|---|
+| Write/modify a file (>30 lines of change) | ✅ yes |
+| Implement a component/route/module | ✅ yes |
+| Write a test suite | ✅ yes |
+| Bulk analysis of many files ("find all usages of X and evaluate") | ✅ yes — returns summary |
+| Large refactoring across files | ✅ yes — one subagent per file |
+| Read one file section | ❌ no — direct |
+| Run bash commands (tests, build, git) | ❌ no — direct |
+| Small targeted edit (<30 lines) | ❌ no — direct `edit` |
+| Update memory/knowledge/task files | ❌ no — direct |
+
+### Subagent Packet Size Rules
+
+- **One subagent = one file or one logical unit** (one component, one route group, one test suite).
+- Max ~200 lines of code per subagent call. Larger units get split into parts.
+- Give each subagent **only the context it needs**: relevant spec excerpt, related interfaces,
+  naming conventions — NOT the whole project history.
+- After each subagent completes, **verify its output** (read the written file or its summary)
+  before proceeding.
+
+### Subagent Call Pattern
+
+```
+spawn subagent:
+  task: "Implement [specific unit] — [concrete acceptance criteria]"
+  context: [minimal relevant excerpts — interfaces, conventions, related types]
+  constraints: [anti-patterns, max lines, style rules]
+  output: [exact file path OR "return summary only"]
+```
+
+### Analysis Subagents (context protection)
+
+For exploration tasks ("how does the auth flow work across these 12 files"), spawn an
+analysis subagent that reads the files in ITS context and returns a **condensed summary**
+(max ~40 lines). The raw file contents never enter the orchestrator context.
 
 ## Session Start — Project Discovery & Session Recovery
 
@@ -66,13 +142,14 @@ Run `git rev-parse --git-dir` to check if git is initialized.
 ### Search Strategy
 
 ```
-1. Specific file mentioned? → Read it directly
+1. Specific file mentioned? → grep -n for the relevant section, then targeted read
 2. Concept/feature question? → Search project:
    - find . -name "*.md" | head -20
    - grep -rl "keyword" . --include="*.ts" --include="*.js" --include="*.md" | head -20
    - ls -la (structure overview)
    - cat package.json / go.mod / Cargo.toml
-3. Nothing found in project? → Ask user for path or content
+3. Many files involved? → Analysis subagent (returns summary)
+4. Nothing found in project? → Ask user for path or content
 ```
 
 ## Web Knowledge — Decision Tree
@@ -155,6 +232,7 @@ _Projekt: <Projektname>_
 Before writing code, produce a written plan:
 - One-line task summary
 - Files to create/modify/delete, what and why
+- **Subagent breakdown:** which units go to which subagents, in which order
 - External knowledge needed (note if web search required)
 - Present to user and wait for approval
 - **Do not implement until approved**
@@ -195,7 +273,8 @@ Drei Speicher-Konzepte existieren parallel:
 
 **Run when the user reports a bug or unexpected behavior.**
 
-1. **Investigate** — Read relevant files, reproduce issue, identify root cause, check for related issues
+1. **Investigate** — Read relevant sections (grep first!), reproduce issue, identify root cause.
+   For bugs spanning many files: analysis subagent returns condensed findings.
 2. **Present findings:**
    ```
    ## Analysis
@@ -224,31 +303,31 @@ Drei Speicher-Konzepte existieren parallel:
 ### Phase 3: Implement
 
 - Follow approved plan and task list (managed by task-planning skill in `.tasks/`)
+- **Delegate each implementation unit to a subagent** per the Subagent Strategy above
+- Small targeted edits (<30 lines) may be done directly with `edit`
 - Update `.pi/MEMORY.md` as you learn
 - Mark steps done via the task-planning skill's `[ ] → [~] → [x]` convention
-- Use `edit` for targeted changes, `write` for new files
-- Make small, focused edits — one logical change per edit
-- After each edit, verify with `read`
+- After each subagent completes, verify output (targeted read) before next unit
+- Write a 2-3 line phase summary to the Aufgabe file when the phase completes
 
 ### Phase 4: Run Unit Tests
 
 - Find and run tests:
   ```bash
-  # Node: npm test || npx jest || npx vitest
-  # Python: pytest || python -m unittest
-  # Go: go test ./...
-  # Rust: cargo test
-  # Generic: find . -name "*.test.*" -o -name "*test*.py" | head -20
+  # Node: npm test 2>&1 | tail -40
+  # Python: pytest 2>&1 | tail -40
+  # Go: go test ./... 2>&1 | tail -40
+  # Rust: cargo test 2>&1 | tail -40
   ```
 - **All tests must pass**. If failing:
-  1. Read output, diagnose root cause
-  2. Fix code
+  1. Read failure output (tail/grep — not full logs), diagnose root cause
+  2. Fix code (subagent for larger fixes, direct edit for small ones)
   3. Re-run until green
 - **Do NOT proceed if tests failing**
 
 ### Phase 5: Code Review
 
-Read every modified file in full. Check:
+Review modified files — **one file at a time**, via `git diff <file>` (not full-project diffs). Check:
 - **Correctness** — solves the problem?
 - **Edge cases** — null/undefined/empty handled?
 - **Naming** — descriptive, consistent?
@@ -256,6 +335,7 @@ Read every modified file in full. Check:
 - **No dead code** — no commented blocks, debug logs, unused imports
 - **No over-engineering** — keep it simple
 - Issues found? Fix and re-run tests (back to Phase 4)
+- For reviews spanning many files: review subagent per layer, returns findings list
 
 ### Phase 6: Commit (if git exists)
 
@@ -277,6 +357,8 @@ Read every modified file in full. Check:
 - **If the active Aufgabe is `in-progress`** → continue from first unchecked step, NEVER ask what to do
 - **Create project memory** — long-term context for the project
 - **Tests before review** — correctness first, quality second
+- **Delegate implementation to subagents** — orchestrator stays lean
+- **Protect the context budget** — targeted reads, summarized output, analysis subagents
 - **Be proactive** in CWD search
 - **Be thorough** — search multiple types/locations
 - **Be honest** — if you can't find something, ask
@@ -301,6 +383,11 @@ Read every modified file in full. Check:
 - **Code review before tests** — Fix correctness first, then review quality
 - **Pushing without permission** — Always ask first
 - **Committing without checking for changes** — Only commit if actual changes exist
+- **Large inline implementations** — Anything >30 lines of change goes to a subagent
+- **Full-file dumps into context** — grep/section reads first; full reads only when necessary
+- **Dumping full logs/test output/diffs** — Always tail/grep/stat first
+- **Continuing after output token limit** — Spawn a subagent for remaining work instead
+- **Re-reading unchanged files** — Trust context; re-read only after modifications
 
 ## Response Pattern for Missing Information
 
