@@ -2,7 +2,7 @@
 name: spec-to-app
 description: |
   Generates a complete, tested, running application from a specification document.
-  WORKFLOW: 0) Load spec → 1) Analyze → 2) Plan & Task List → 3) Scaffold →
+  WORKFLOW: 0) Load spec → 1) Analyze → 2) Plan & Task List (via task-planning skill) → 3) Scaffold →
   4) Data Layer → 5) API Routes → 6) Pages & Layout → 7) Styling →
   8) Unit Tests → 9) Fix → 10) Code Review → 11) Functional Tests →
   12) Fix → 13) Build Verification → 14) Report.
@@ -53,24 +53,9 @@ Read the spec file(s) completely. Extract and organize all requirements.
 
 ### Phase 1: Project Planning
 
-Create a detailed implementation plan. Write to `.pi/TASK_LIST.md`:
+Create a detailed implementation plan based on spec analysis.
 
-```markdown
-# Task List
-**Task:** Generate complete application from specification
-**Status:** `in-progress`
-**Started:** <date>
-**Last Updated:** <date>
-
-## Plan
-<Generated from spec analysis — one paragraph per major component>
-
-## Steps
-<One step per task in the workflow below>
-
-## Notes
-<Assumptions, decisions, external research>
-```
+After the plan is approved, delegate to the **task-planning** skill to convert it into tracked tasks with batches, branches, and worktrees (`.tasks/` folder). Do not create task lists yourself — use the task-planning skill.
 
 ### Phase 2: Project Scaffolding
 - [ ] Initialize project structure (directories, config files)
@@ -167,13 +152,13 @@ Document any assumptions in `.pi/MEMORY.md` under "Spec Interpretations".
 
 If a session is interrupted and resumes:
 
-1. **Read `.pi/TASK_LIST.md`** — Check which step was in progress.
+1. **Read the active Aufgabe** from the task-planning skill (`.tasks/_index.md` and the Aufgabe file) — check which step was in progress.
 2. **Read `.pi/MEMORY.md`** — Recover context, decisions, assumptions.
-3. **Continue from the first `[ ]` unchecked step** — Never restart.
+3. **Continue from the first `[ ]` unchecked step** in the active Aufgabe — Never restart.
 4. **If the build was passing before interruption**, verify it still passes.
 5. **If tests were passing**, verify they still pass.
 6. **If the dev server was running**, verify it still starts.
-7. **If a new spec file was added mid-session**, re-analyze and update the task list.
+7. **If a new spec file was added mid-session**, re-analyze and update the task list via the task-planning skill.
 
 ## Error Recovery
 
