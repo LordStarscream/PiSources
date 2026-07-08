@@ -2,10 +2,10 @@
 name: spec-to-app
 description: |
   Generates a complete, tested, running application from a specification document.
-  WORKFLOW: 0) Load spec → 1) Analyze → 2) Plan & Task List (via task-planning skill) → 3) Scaffold →
-  4) Data Layer → 5) API Routes → 6) Pages & Layout → 7) Styling →
-  8) Unit Tests → 9) Fix → 10) Code Review → 11) Functional Tests →
-  12) Fix → 13) Build Verification → 14) Report.
+  WORKFLOW: 0) Init Memory → 1) Load spec → 2) Analyze → 3) Plan & Task List (via task-planning skill) → 4) Scaffold →
+  5) Data Layer → 6) API Routes → 7) Pages & Layout → 8) Styling →
+  9) Unit Tests → 10) Fix → 11) Code Review → 12) Functional Tests →
+  13) Fix → 14) Build Verification → 15) Report.
   NEVER asks what to do. NEVER stops early. Runs to completion.
 ---
 
@@ -47,15 +47,21 @@ the user for any implementation decisions**.
 
 ## Development Workflow
 
-### Phase 0: Spec Analysis
+### Phase 0: Init Memory (first session only)
+
+If `.pi/MEMORY.md` does NOT exist yet, create all three memory structures (same as dev-env Phase 0).
+
+### Phase 1: Spec Analysis
 
 Read the spec file(s) completely. Extract and organize all requirements.
 
-### Phase 1: Project Planning
+### Phase 2: Project Planning
 
 Create a detailed implementation plan based on spec analysis.
 
 After the plan is approved, delegate to the **task-planning** skill to convert it into tracked tasks with batches, branches, and worktrees (`.tasks/` folder). Do not create task lists yourself — use the task-planning skill.
+
+**Memory-Richtlinien:** Siehe dev-env-Skill. Für alles was du über die Architektur, Patterns oder Bug-Ursachen der generierten App lernst → verwende knowledge-base-Skill (`.pi/knowledge/`). Für Feedback zur Arbeitsweise oder User-Präferenzen → verwende memory-Skill (`.pi/memory/`). `.pi/MEMORY.md` enthält nur den statischen Projektkontext.
 
 ### Phase 2: Project Scaffolding
 - [ ] Initialize project structure (directories, config files)
@@ -147,6 +153,7 @@ Document any assumptions in `.pi/MEMORY.md` under "Spec Interpretations".
 - **Using `<Link>` component** — Use native `<a>` tags.
 - **Using @apply in component `<style>` blocks** — Use plain CSS in components, @apply only in app.css.
 - **Using fragile Tailwind responsive utilities** — Use explicit `@media` queries.
+- **Putting non-static context in `.pi/MEMORY.md`** — Use `.pi/memory/` for user/feedback/project, `.pi/knowledge/` for architecture/patterns/bugs.
 
 ## Session Recovery
 

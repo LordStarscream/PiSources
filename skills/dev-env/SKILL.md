@@ -3,11 +3,12 @@ name: dev-env
 description: |
   Development environment skill. SESSION START: search CWD/subdirs
   for .pi/MEMORY.md — read it for context. For task state, consult the
-  task-planning skill (`.tasks/` folder). If an Aufgabe is in-progress,
-  continue from it, NEVER ask what to do.
-  WORKFLOW: 1) Plan → 1.5) Bug Analysis (if bug report) → 2) Project Memory
-  → 3) Implement (via task-planning) → 4) Tests → 5) Code Review →
-  6) Commit → 7) Push.
+  task-planning skill (`.tasks/` folder). For memory, consult memory skill
+  (.pi/memory/). For knowledge, consult knowledge-base skill (.pi/knowledge/).
+  If an Aufgabe is in-progress, continue from it, NEVER ask what to do.
+  WORKFLOW: 0) Init Memory → 1) Plan → 1.5) Bug Analysis (if bug report)
+  → 2) Project Memory → 3) Implement (via task-planning) → 4) Tests →
+  5) Code Review → 6) Commit → 7) Push.
   SEARCH: CWD-first. Anti-patterns: no web for project, no ask-what-next,
   no code without plan, no skip-tests, no push-without-permission.
 ---
@@ -89,6 +90,66 @@ When the task is **conceptual** (not tied to project files):
 
 ## Development Workflow
 
+### Phase 0: Init Memory (first session only)
+
+If `.pi/MEMORY.md` does NOT exist yet, create all three memory structures:
+
+**1. Create `.pi/MEMORY.md`** (project overview):
+```markdown
+# Project Memory
+
+## Purpose
+<One-line project description>
+
+## Structure
+<Directory tree or key files>
+
+## Installation
+<How to install/run the project>
+
+## Memory-Konzepte
+
+Drei Speicher-Konzepte existieren parallel:
+
+| Konzept | Ort | Wann verwenden |
+|---|---|---|
+| Projekt-Memory | `.pi/MEMORY.md` | Grober Projektkontext — Struktur, Installation, Workflow, Rules |
+| Agent-Memory | `.pi/memory/` | Wenn der User etwas sagt das sich ändern kann — Rolle, Feedback, Projekt-Status |
+| Knowledge-Base | `.pi/knowledge/` | Wenn wir etwas über das Projekt lernen — Architektur, Patterns, Bug-Ursachen |
+
+**Regel:** `.pi/MEMORY.md` enthält NIE Agent-Memory oder KB-Einträge. Sie bleibt der statische Projektkontext.
+```
+
+**2. Create `.pi/memory/INDEX.md`** (typed memories):
+```markdown
+# Memory Index
+
+- [User-Rolle](user_role.md) — Wer arbeitet hier, mit welchem Wissen?
+- [Feedback](feedback_general.md) — Wie soll gearbeitet werden?
+```
+
+**3. Create `.pi/knowledge/INDEX.md`** (project knowledge):
+```markdown
+# Knowledge Base — Index
+_Projekt: <Projektname>_  
+
+## Lookup-Tabelle
+
+| Thema / Stichwort | Datei | Abschnitt |
+|---|---|---|
+
+---
+
+## Dateien
+
+```
+<kb_root>/
+└── INDEX.md
+```
+```
+
+---
+
 ### Phase 1: Plan
 
 Before writing code, produce a written plan:
@@ -97,6 +158,38 @@ Before writing code, produce a written plan:
 - External knowledge needed (note if web search required)
 - Present to user and wait for approval
 - **Do not implement until approved**
+
+### Memory-Richtlinien
+
+Drei Speicher-Konzepte existieren parallel:
+
+| Konzept | Ort | Wann verwenden |
+|---|---|---|
+| Projekt-Memory | `.pi/MEMORY.md` | Grober Projektkontext — Struktur, Installation, Workflow, Rules |
+| Agent-Memory | `.pi/memory/` | Wenn der User etwas sagt das sich ändern kann — Rolle, Feedback, Projekt-Status |
+| Knowledge-Base | `.pi/knowledge/` | Wenn wir etwas über das Projekt lernen — Architektur, Patterns, Bug-Ursachen |
+
+**Regel:** `.pi/MEMORY.md` enthält NIE Agent-Memory oder KB-Einträge. Sie bleibt der statische Projektkontext.
+
+**Wohin mit dem was du lernst:**
+
+| Wenn du lernst... | Schreibe nach... | Skill |
+|---|---|---|
+| Wer der User ist, Präferenzen, Wissenstand | `.pi/memory/` (user-Typ) | memory-Skill |
+| Feedback zur Arbeitsweise ("nicht so", "gehör auf mit X") | `.pi/memory/` (feedback-Typ) | memory-Skill |
+| Wer was tut, warum, bis wann | `.pi/memory/` (project-Typ) | memory-Skill |
+| Externe Systeme und ihre Zwecke | `.pi/memory/` (reference-Typ) | memory-Skill |
+| Projektstruktur, Tech-Stack, Installation | `.pi/MEMORY.md` | — (statisch) |
+| Architektur, Patterns, Bug-Ursachen, Entscheidungen | `.pi/knowledge/` | knowledge-base-Skill |
+
+**Beim Speichern in `.pi/memory/`** folge dem memory-Skill (Schritt 1: Datei schreiben, Schritt 2: INDEX aktualisieren).
+
+**Beim Speichern in `.pi/knowledge/`** folge dem knowledge-base-Skill (Modus B: Capture).
+
+**Beim Lesen:**
+- `.pi/MEMORY.md` → wird zu Session-Start geladen
+- `.pi/memory/MEMORY.md` → wird zu Session-Start geladen (Index)
+- `.pi/knowledge/INDEX.md` → nur bei Bedarf lesen, nie alles vorab laden
 
 ### Phase 1.5: Bug Analysis (for bug reports)
 
@@ -120,10 +213,11 @@ Before writing code, produce a written plan:
 
 ### Phase 2: Project Memory
 
-Create or update `.pi/MEMORY.md`:
-- Create on first session, update throughout lifecycle
-- Contains: purpose, tech stack, architecture, progress, known issues, session context
-- Update whenever new knowledge is gained
+**`.pi/MEMORY.md`** — create or update with project overview (purpose, structure, installation). This is the static project context file.
+
+**Memory-Richtlinien:** Für alles andere was du über den User, Feedback, Architektur oder Patterns lernst → folge den Memory-Richtlinien oben und verwende:
+- memory-Skill für `.pi/memory/` (user, feedback, project, reference)
+- knowledge-base-Skill für `.pi/knowledge/` (architecture, bugs, patterns)
 
 **Task management:** After an approved plan, delegate to the **task-planning** skill to convert the plan into tracked tasks with batches, branches, and worktrees (`.tasks/` folder). Do not create task lists yourself — use the task-planning skill.
 
