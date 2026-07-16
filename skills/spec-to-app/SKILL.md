@@ -48,10 +48,22 @@ Subagents implement one unit at a time.
 ```
 spawn subagent:
   task: "Implement [specific unit] according to spec section [X]"
-  context: [relevant spec excerpt + existing related files]
-  constraints: [anti-patterns, naming conventions, max lines]
+  context: [codebase map + relevant spec excerpt + interfaces of related files]
+  constraints:
+    - Do NOT explore the codebase. No find/grep/ls, no reading files
+      to "get a picture of the project".
+    - Use ONLY the context provided in this prompt.
+    - You may read AT MOST the 1-2 files explicitly listed in the context.
+    - If required information is missing, STOP and return a short question
+      instead of searching for it.
+    - [anti-patterns, naming conventions, max lines]
   output: [exact file path to write]
 ```
+
+**Why the exploration ban:** Without it, every parallel agent re-reads the same
+10-20 files to orient itself — burning 15-25k tokens each and multiplying
+runtime. The orchestrator provides all needed context via the Codebase Map
+(Phase 2.5); agents implement, they do not investigate.
 
 ### When NOT to use subagents
 
@@ -137,6 +149,24 @@ Create implementation plan. Delegate to **task-planning** skill to convert into 
 - Architecture/patterns/bug causes → `knowledge-base` skill (`.pi/knowledge/`)
 - User preferences/feedback → `memory` skill (`.pi/memory/`)
 - `.pi/MEMORY.md` → static project context only
+
+### Phase 2.5: Codebase Map (ONE Explore agent — before any implementation)
+
+Spawn exactly ONE Explore agent that surveys the project and writes
+`.pi/knowledge/codebase-map.md` (max ~80 lines):
+
+- Directory structure (relevant parts only)
+- Existing interfaces/types with signatures (name + params + return, no bodies)
+- Conventions observed: naming, error handling, DB access pattern, imports
+- Key config values (ports, paths, DB location)
+
+**Every implementation subagent afterwards receives this map in its context.**
+This is why they don't need to explore — one agent explored for all of them.
+
+When later phases create files that subsequent agents build on (e.g. the data
+layer that API routes import), the orchestrator appends the new file's
+interface signatures to the map (direct edit, no subagent) OR includes them
+explicitly in the dependent agent's context.
 
 ### Phase 3: Project Scaffolding
 
@@ -278,6 +308,8 @@ Document any assumptions in `.pi/MEMORY.md` under "Spec Interpretations" AND as 
 - **Putting non-static context in `.pi/MEMORY.md`** — Use `.pi/memory/` or `.pi/knowledge/`.
 - **Large subagent packets** — Max ~200 lines per subagent call. Split if larger.
 - **Unverified subagent output** — Always read the file a subagent wrote before proceeding.
+- **Subagents exploring the codebase** — Implementation agents get their context from the Codebase Map (Phase 2.5), they never grep/find/read around to "understand the project". One Explore agent explores; all others implement.
+- **Skipping the Codebase Map** — No implementation subagent may be spawned before `.pi/knowledge/codebase-map.md` exists.
 
 ## Session Recovery
 

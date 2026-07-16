@@ -9,8 +9,8 @@ description: |
   Uses pi-subagents for implementation work — small focused packets,
   avoids output token limits, keeps orchestrator context lean.
   WORKFLOW: 0) Init Memory → 1) Plan → 1.5) Bug Analysis (if bug report)
-  → 2) Project Memory → 3) Implement (subagents via task-planning) → 4) Tests →
-  5) Code Review → 6) Commit → 7) Push.
+  → 1.6) App Smoke Check → 2) Project Memory → 3) Implement (subagents via task-planning) → 4) Tests →
+  5) Code Review → 6) Commit → 7) Push → 8) Knowledge Capture → 9) Documentation Update.
   SEARCH: CWD-first. Anti-patterns: no web for project, no ask-what-next,
   no code without plan, no skip-tests, no push-without-permission,
   no large inline implementations, no full-file dumps into context.
@@ -93,9 +93,20 @@ Implementation work is delegated to **subagents** (pi-subagents) in small, focus
 spawn subagent:
   task: "Implement [specific unit] — [concrete acceptance criteria]"
   context: [minimal relevant excerpts — interfaces, conventions, related types]
-  constraints: [anti-patterns, max lines, style rules]
+  constraints:
+    - Do NOT explore the codebase. No find/grep/ls, no reading files
+      to "get a picture of the project".
+    - Use ONLY the context provided in this prompt.
+    - You may read AT MOST the 1-2 files explicitly listed in the context.
+    - If required information is missing, STOP and return a short question
+      instead of searching for it.
+    - [anti-patterns, max lines, style rules]
   output: [exact file path OR "return summary only"]
 ```
+
+**Exception:** Analysis subagents (below) are the ONE type allowed to explore —
+that is their job. Implementation subagents never explore; they receive their
+context from the orchestrator (who may have used an analysis subagent first).
 
 ### Analysis Subagents (context protection)
 
@@ -107,7 +118,7 @@ analysis subagent that reads the files in ITS context and returns a **condensed 
 
 ### Step 1: Find the Project Root
 
-Look for the project root by checking for `.pi/TASK_LIST.md`, `.pi/MEMORY.md`, `package.json`, `go.mod`, `Cargo.toml`, or `.git`:
+Look for the project root by checking for `.pi/MEMORY.md`, `.tasks/_index.md`, `package.json`, `go.mod`, `Cargo.toml`, or `.git`:
 
 1. **Check CWD first** — the folder where pi was launched.
 2. **If CWD has no project markers**, look in CWD subdirectories.
@@ -169,61 +180,10 @@ When the task is **conceptual** (not tied to project files):
 
 ### Phase 0: Init Memory (first session only)
 
-If `.pi/MEMORY.md` does NOT exist yet, create all three memory structures:
+If `.pi/MEMORY.md` does NOT exist yet:
 
-**1. Create `.pi/MEMORY.md`** (project overview):
-```markdown
-# Project Memory
-
-## Purpose
-<One-line project description>
-
-## Structure
-<Directory tree or key files>
-
-## Installation
-<How to install/run the project>
-
-## Memory-Konzepte
-
-Drei Speicher-Konzepte existieren parallel:
-
-| Konzept | Ort | Wann verwenden |
-|---|---|---|
-| Projekt-Memory | `.pi/MEMORY.md` | Grober Projektkontext — Struktur, Installation, Workflow, Rules |
-| Agent-Memory | `.pi/memory/` | Wenn der User etwas sagt das sich ändern kann — Rolle, Feedback, Projekt-Status |
-| Knowledge-Base | `.pi/knowledge/` | Wenn wir etwas über das Projekt lernen — Architektur, Patterns, Bug-Ursachen |
-
-**Regel:** `.pi/MEMORY.md` enthält NIE Agent-Memory oder KB-Einträge. Sie bleibt der statische Projektkontext.
-```
-
-**2. Create `.pi/memory/INDEX.md`** (typed memories):
-```markdown
-# Memory Index
-
-- [User-Rolle](user_role.md) — Wer arbeitet hier, mit welchem Wissen?
-- [Feedback](feedback_general.md) — Wie soll gearbeitet werden?
-```
-
-**3. Create `.pi/knowledge/INDEX.md`** (project knowledge):
-```markdown
-# Knowledge Base — Index
-_Projekt: <Projektname>_  
-
-## Lookup-Tabelle
-
-| Thema / Stichwort | Datei | Abschnitt |
-|---|---|---|
-
----
-
-## Dateien
-
-```
-<kb_root>/
-└── INDEX.md
-```
-```
+- **Project memory** (`.pi/MEMORY.md`): Create with purpose, structure, installation.
+- **Memory structures** (`.pi/memory/`, `.pi/knowledge/`): Follow the **memory-Skill** — do not replicate the memory schema inline.
 
 ---
 
@@ -239,35 +199,23 @@ Before writing code, produce a written plan:
 
 ### Memory-Richtlinien
 
-Drei Speicher-Konzepte existieren parallel:
+Drei Speicher-Konzepte existieren parallel (volle Details im memory-Skill):
 
 | Konzept | Ort | Wann verwenden |
 |---|---|---|
 | Projekt-Memory | `.pi/MEMORY.md` | Grober Projektkontext — Struktur, Installation, Workflow, Rules |
-| Agent-Memory | `.pi/memory/` | Wenn der User etwas sagt das sich ändern kann — Rolle, Feedback, Projekt-Status |
-| Knowledge-Base | `.pi/knowledge/` | Wenn wir etwas über das Projekt lernen — Architektur, Patterns, Bug-Ursachen |
+| Agent-Memory | `.pi/memory/` | User, Feedback, Projekt-Status, Referenzen |
+| Knowledge-Base | `.pi/knowledge/` | Architektur, Patterns, Bug-Ursachen, Entscheidungen |
 
 **Regel:** `.pi/MEMORY.md` enthält NIE Agent-Memory oder KB-Einträge. Sie bleibt der statische Projektkontext.
 
-**Wohin mit dem was du lernst:**
-
-| Wenn du lernst... | Schreibe nach... | Skill |
-|---|---|---|
-| Wer der User ist, Präferenzen, Wissenstand | `.pi/memory/` (user-Typ) | memory-Skill |
-| Feedback zur Arbeitsweise ("nicht so", "gehör auf mit X") | `.pi/memory/` (feedback-Typ) | memory-Skill |
-| Wer was tut, warum, bis wann | `.pi/memory/` (project-Typ) | memory-Skill |
-| Externe Systeme und ihre Zwecke | `.pi/memory/` (reference-Typ) | memory-Skill |
-| Projektstruktur, Tech-Stack, Installation | `.pi/MEMORY.md` | — (statisch) |
-| Architektur, Patterns, Bug-Ursachen, Entscheidungen | `.pi/knowledge/` | knowledge-base-Skill |
-
-**Beim Speichern in `.pi/memory/`** folge dem memory-Skill (Schritt 1: Datei schreiben, Schritt 2: INDEX aktualisieren).
-
-**Beim Speichern in `.pi/knowledge/`** folge dem knowledge-base-Skill (Modus B: Capture).
+**Beim Speichern in `.pi/memory/`** → folge dem **memory-Skill** (Datei schreiben + INDEX aktualisieren).
+**Beim Speichern in `.pi/knowledge/`** → folge dem **knowledge-base-Skill** (Modus B: Capture).
 
 **Beim Lesen:**
-- `.pi/MEMORY.md` → wird zu Session-Start geladen
-- `.pi/memory/MEMORY.md` → wird zu Session-Start geladen (Index)
-- `.pi/knowledge/INDEX.md` → nur bei Bedarf lesen, nie alles vorab laden
+- `.pi/MEMORY.md` → Session-Start
+- `.pi/memory/` → memory-Skill (Index + getippte Dateien)
+- `.pi/knowledge/INDEX.md` → nur bei Bedarf
 
 ### Phase 1.5: Bug Analysis (for bug reports)
 
@@ -289,6 +237,57 @@ Drei Speicher-Konzepte existieren parallel:
    - <uncertainties, alternatives, side effects>
    ```
 3. **Wait for feedback** — approve, clarify, or disagree. **Do NOT implement yet.**
+
+### Phase 1.6: App Smoke Check
+
+**Before implementing anything, verify the application starts without errors.**
+
+1. **Determine how to run the app** — check for common entry points:
+   ```bash
+   # Node/TypeScript: check package.json "scripts"
+   # Python: check main.py, app.py, or requirements.txt + entry script
+   # Go: check main.go
+   # Rust: check Cargo.toml bin target
+   # Generic: check README.md for "Running" instructions
+   ```
+
+2. **Run a quick smoke check** — start the app and let it run briefly (5-10s max):
+   ```bash
+   # Node: timeout 10 npm start 2>&1 || true
+   # Python: timeout 10 python main.py 2>&1 || true
+   # Go: timeout 10 go run . 2>&1 || true
+   # Rust: timeout 10 cargo run 2>&1 || true
+   ```
+   The process is killed by `timeout` — that is expected. We only care about **startup errors**.
+
+3. **Check for immediate failures** (these must be reported and potentially fixed before implementing):
+   - Import/module errors
+   - Syntax errors
+   - Missing config / environment variables
+   - Port already in use (skip — not an app error)
+   - Dependency not installed (skip if `pip install -r requirements.txt` / `npm install` resolves it)
+
+4. **If the app starts cleanly** (serves, listens, or prints ready) → proceed to next step.
+   **If startup errors are found** → report them, fix if trivial, otherwise note as pre-existing.
+
+5. **Web-App Link Check** (only if the app is a web server with known endpoints):
+   - Find the base URL from startup output (e.g., `http://127.0.0.1:3000`, `http://localhost:8080`).
+   - Discover endpoints by scanning the source:
+     ```bash
+     # Express/FastAPI/Flask route decorators
+     grep -rn 'router\|route\|get(\|post(\|@app\|@router\|api.route' src/ api/ --include="*.py" --include="*.ts" --include="*.js" | head -30
+     ```
+   - Test the first ~15 endpoints with `curl` (keep it quick, 2s timeout per request):
+     ```bash
+     curl -sf --max-time 2 http://127.0.0.1:3000/health > /dev/null && echo "OK /health" || echo "FAIL /health"
+     curl -sf --max-time 2 http://127.0.0.1:3000/api/status > /dev/null && echo "OK /api/status" || echo "FAIL /api/status"
+     ```
+   - Report any unreachable endpoints as pre-existing issues.
+   - **Do not hang** — total link check time max 30s. Skip if app is still initializing.
+
+6. **If running the app is not feasible** (e.g., requires external services, database, interactive terminal) → skip with a note.
+
+**Goal:** Catch "app is already broken" before investing in new features.
 
 ### Phase 2: Project Memory
 
@@ -349,6 +348,44 @@ Review modified files — **one file at a time**, via `git diff <file>` (not ful
 - If remote exists, ask: `"Remote detected: <name> (<url>) — Would you like me to push?"`
 - **Only push if user explicitly says yes. Never push without permission.**
 
+### Phase 8: Knowledge Capture (knowledge-base Auto-Capture)
+
+**Am Ende jeder Session — explizit ausführen, nicht optional.**
+
+Folge dem **knowledge-base-Skill Modus B**:
+
+1. **Erkenntnisse identifizieren** — Was haben wir heute gelernt?
+   - Neue Zusammenhänge (wie X mit Y interagiert)
+   - Bugs gefunden + Ursache lokalisiert
+   - Architektur-Details entdeckt
+   - Patterns gesehen (wiederkehrendes Idiom)
+   - Entscheidungen getroffen (warum X statt Y)
+2. **Thema zuordnen** — `.pi/knowledge/INDEX.md` lesen, passendes Thema/Datei bestimmen
+3. **Inhalt schreiben** — In die Zieldatei einfügen (platzhalter ersetzen, neue §§ anlegen)
+4. **INDEX aktualisieren** — neuen Eintrag in Lookup-Tabelle + Dateiliste
+5. **Kurze Zusammenfassung** — Dem User mitteilen was gespeichert wurde
+
+**Nichts Neues?** Bestätigen: `"Keine neuen KB-Einträge nötig."`
+
+**Was NICHT captured wird** (aus knowledge-base-Skill):
+- Ephemere Task-Details (gehört ins Git)
+- Code-Snippets die sich schnell ändern — nur Prinzipien und Zusammenhänge
+- Dinge direkt aus dem Code ablesbar (Namen, Signaturen, offensichtliche Struktur)
+
+### Phase 9: Documentation Update
+
+**Nur wenn sich die Projektstruktur, Architektur oder Konfiguration geändert hat.**
+
+1. **Dokumentations-Files prüfen** — existiert `CLAUDE.md`, `README.md`, `DOCS.md`, `DOCS_DE.md`?
+2. **Änderungen abgleichen** — haben sich folgende Dinge verändert?
+   - Datei-/Verzeichnisstruktur
+   - Architektur-Komponenten oder -Konzepte
+   - Config-Schema oder Konventionen
+   - Model-Zuweisungen oder Backend-Konfiguration
+   - Test-Anzahl oder Abhängigkeiten
+3. **Updates durchführen** — nur die Stellen ändern die sich tatsächlich verändert haben
+4. **Nicht updaten** — wenn sich nichts Wesentliches geändert hat; dann kurz bestätigen
+
 ## Behavior Rules
 
 - **Plan before implementing** — never start coding without a written plan
@@ -384,6 +421,7 @@ Review modified files — **one file at a time**, via `git diff <file>` (not ful
 - **Pushing without permission** — Always ask first
 - **Committing without checking for changes** — Only commit if actual changes exist
 - **Large inline implementations** — Anything >30 lines of change goes to a subagent
+- **Implementation subagents exploring the codebase** — They implement with the provided context; only analysis subagents explore. Parallel agents re-reading the same files multiplies token cost and runtime.
 - **Full-file dumps into context** — grep/section reads first; full reads only when necessary
 - **Dumping full logs/test output/diffs** — Always tail/grep/stat first
 - **Continuing after output token limit** — Spawn a subagent for remaining work instead
