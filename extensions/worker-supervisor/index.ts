@@ -53,6 +53,9 @@ export default function (pi: ExtensionAPI) {
   }
   // Direct Agent calls bypass the contract; expose one controlled start path instead.
   pi.on('tool_call', (event) => {
+    if (event.toolName === 'get_subagent_result' && (event.input as any)?.wait) return {
+      block: true, reason: 'Blocking result waits can deadlock supervision. Use worker_status or get_subagent_result with wait: false.',
+    };
     if (['Agent', 'SubagentWorkflow'].includes(event.toolName)) return {
       block: true, reason: 'Use start_worker with an explicit bounded contract. Raw delegation bypasses supervision.',
     };

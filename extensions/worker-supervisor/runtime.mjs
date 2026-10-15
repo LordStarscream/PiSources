@@ -39,7 +39,7 @@ export function makeRecord({ root, task, paths, readOnly = false, checks = [] },
     createdAt: now, deadline: now + 20 * 60_000, maxTools: 80, tools: 0,
     checkpointTools: 10, sinceCheckpoint: 0, nextCheckpoint: now + 5 * 60_000,
     status: 'starting', stopped: false, active: false, attached: false,
-    waiters: [], idleWaiters: [], notify, audit: [], writes: new Set(), checksRun: new Map(), processes: new Set(),
+    waiters: [], queueReleases: new Set(), queueTail: Promise.resolve(), notify, audit: [], writes: new Set(), checksRun: new Map(), processes: new Set(),
   };
   record.paths = (paths ?? []).map(p => {
     if (!p || resolve(record.root, p) === record.root) throw new Error('Write scopes must be narrower than project root');
@@ -82,33 +82,47 @@ export function tick(record, now = Date.now()) {
   if (now >= record.nextCheckpoint) checkpoint(record, 'Five-minute checkpoint');
 }
 export async function beforeTool(record, name, input, now = Date.now()) {
-  // Serialize parallel tool batches so a checkpoint really is between tools.
-  while (record.active && !record.stopped) await new Promise(resolve => record.idleWaiters.push(resolve));
-  now = Math.max(now, Date.now());
-  tick(record, now);
-  permit(record, name, input);
-  if (record.tools >= record.maxTools) { stop(record, 'Tool budget exceeded'); throw new Error(record.reason); }
-  if (record.sinceCheckpoint >= record.checkpointTools) checkpoint(record, 'Tool checkpoint');
-  if (record.status === 'pause-requested') {
-    record.status = 'paused';
-    const wait = new Promise(resolve => record.waiters.push(resolve));
-    record.notify({ kind: 'paused', reason: 'Paused before next tool; inspect diff and audit before continuing' });
-    await wait;
-    tick(record);
+  // Execution lock, acquired by the actual execute wrapper, NEVER by preflight.
+  const previous = record.queueTail;
+  let release;
+  record.queueTail = new Promise(resolve => { release = resolve; });
+  record.queueReleases.add(release);
+  const unlock = () => { record.queueReleases.delete(release); release(); };
+  await previous;
+  try {
+    now = Math.max(now, Date.now());
+    tick(record, now);
     permit(record, name, input);
+    if (record.tools >= record.maxTools) { stop(record, 'Tool budget exceeded'); throw new Error(record.reason); }
+    if (record.sinceCheckpoint >= record.checkpointTools) checkpoint(record, 'Tool checkpoint');
+    if (record.status === 'pause-requested' || record.status === 'paused') {
+      record.status = 'paused';
+      const wait = new Promise(resolve => record.waiters.push(resolve));
+      record.notify({ kind: 'paused', reason: 'Paused before next tool; inspect diff and audit before continuing' });
+      await wait;
+      now = Date.now();
+      tick(record, now);
+      permit(record, name, input);
+    }
+    record.tools++;
+    record.sinceCheckpoint++;
+    record.active = true;
+    record.releaseTool = unlock;
+    record.toolDeadline = now + (name === 'worker_check' ?
+      (record.checks.find(c => c.id === input.id)?.timeoutSeconds ?? 120) * 1000 : 30_000);
+    record.audit.push({ kind: 'tool', tool: name, path: input.path, check: input.id, at: now });
+    if (name === 'write' || name === 'edit') record.writes.add(projectPath(record, input.path));
+    if (record.audit.length > 100) record.audit.splice(0, record.audit.length - 100);
+  } catch (error) {
+    unlock();
+    throw error;
   }
-  record.tools++;
-  record.sinceCheckpoint++;
-  record.active = true;
-  record.toolDeadline = now + (name === 'worker_check' ?
-    (record.checks.find(c => c.id === input.id)?.timeoutSeconds ?? 120) * 1000 : 30_000);
-  record.audit.push({ kind: 'tool', tool: name, path: input.path, check: input.id, at: now });
-  if (name === 'write' || name === 'edit') record.writes.add(projectPath(record, input.path));
-  if (record.audit.length > 100) record.audit.splice(0, record.audit.length - 100);
 }
 export function finishTool(record) {
   record.active = false;
-  for (const resolve of record.idleWaiters.splice(0)) resolve();
+  const release = record.releaseTool;
+  record.releaseTool = undefined;
+  release?.();
 }
 export function stop(record, reason = 'Stopped by controller') {
   if (record.stopped) return;
@@ -116,7 +130,8 @@ export function stop(record, reason = 'Stopped by controller') {
   record.status = 'stop-requested';
   record.reason = reason;
   for (const resolve of record.waiters.splice(0)) resolve();
-  for (const resolve of record.idleWaiters.splice(0)) resolve();
+  for (const resolve of record.queueReleases) resolve();
+  record.queueReleases.clear();
   for (const child of record.processes) terminate(child);
   record.abort?.();
   record.notify({ kind: 'stop-requested', reason });
@@ -125,7 +140,9 @@ export function closeRecord(record) {
   // Normal completion revokes the contract WITHOUT aborting a successful run.
   record.stopped = true;
   record.status = 'finished';
-  for (const resolve of [...record.waiters.splice(0), ...record.idleWaiters.splice(0)]) resolve();
+  for (const resolve of record.waiters.splice(0)) resolve();
+  for (const resolve of record.queueReleases) resolve();
+  record.queueReleases.clear();
   for (const child of record.processes) terminate(child);
 }
 export function approve(record, rationale, now = Date.now()) {

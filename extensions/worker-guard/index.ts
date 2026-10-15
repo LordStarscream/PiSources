@@ -1,11 +1,11 @@
-import type { ExtensionAPI } from '@earendil-works/pi-coding-agent';
+import { type ExtensionAPI, createReadToolDefinition, createWriteToolDefinition, createEditToolDefinition,
+  createGrepToolDefinition, createFindToolDefinition, createLsToolDefinition } from '@earendil-works/pi-coding-agent';
 import { spawn } from 'node:child_process';
-import { registry, beforeTool, finishTool, stop, closeRecord, tick, terminate } from '../worker-supervisor/runtime.mjs';
+import { registry, permit, beforeTool, finishTool, stop, closeRecord, tick, terminate } from '../worker-supervisor/runtime.mjs';
 
 export default function (pi: ExtensionAPI) {
   let record: any;
   let requiresContract = false;
-  const allowedCalls = new Set<string>();
   let timer: ReturnType<typeof setInterval> | undefined;
   pi.on('before_agent_start', (event, ctx) => {
     requiresContract = event.systemPrompt.includes('PISOURCES_SUPERVISED_WORKER');
@@ -26,21 +26,50 @@ export default function (pi: ExtensionAPI) {
       '\nNo commits, task/control-file changes, delegation, shell, or follow-up tasks. Stop when done.\n' +
       'Available check IDs: ' + record.checks.map((c: any) => c.id).join(', ') };
   });
-  pi.on('tool_call', async (event, ctx) => {
+  // Pi may prepare a whole batch before it executes ANY tool. Never wait here.
+  pi.on('tool_call', (event) => {
     if (!record) return requiresContract ? { block: true, reason: 'Missing supervisor contract' } : undefined;
-    try {
-      await beforeTool(record, event.toolName, event.input);
-      allowedCalls.add(event.toolCallId);
-      // Clamp search time at the tool layer as well. read/grep/find are bounded to cwd.
-      if (['grep', 'find'].includes(event.toolName)) (event.input as any).limit = Math.min(Number((event.input as any).limit) || 100, 100);
-    } catch (error) {
+    try { permit(record, event.toolName, event.input); }
+    catch (error) {
       stop(record, String(error));
       return { block: true, reason: String(error) };
     }
   });
-  pi.on('tool_result', event => {
-    if (record && allowedCalls.delete(event.toolCallId)) finishTool(record);
-  });
+  async function executeGuarded(name: string, params: any, signal: AbortSignal | undefined, execute: () => Promise<any>) {
+    if (!record) {
+      if (requiresContract) throw new Error('Missing supervisor contract');
+      return execute(); // Main-session native tools retain ordinary behavior.
+    }
+    const current = record;
+    let acquired = false;
+    const abort = () => stop(current, 'Tool execution cancelled');
+    signal?.addEventListener('abort', abort, { once: true });
+    if (signal?.aborted) abort();
+    try {
+      await beforeTool(current, name, params);
+      acquired = true;
+      return await execute();
+    } catch (error) {
+      // Tool failures are reported for the bounded repair loop; policy/budget
+      // failures already revoke the contract in preflight or beforeTool.
+      if (!acquired && !current.stopped) stop(current, String(error));
+      throw error;
+    } finally {
+      signal?.removeEventListener('abort', abort);
+      if (acquired) finishTool(current);
+    }
+  }
+  for (const factory of [createReadToolDefinition, createWriteToolDefinition, createEditToolDefinition,
+    createGrepToolDefinition, createFindToolDefinition, createLsToolDefinition]) {
+    const native = factory(process.cwd());
+    pi.registerTool({ ...native,
+      async execute(id: string, params: any, signal: AbortSignal | undefined, update: any, ctx: any) {
+        const input = { ...params };
+        if (record && ['grep', 'find'].includes(native.name)) input.limit = Math.min(Number(input.limit) || 100, 100);
+        return executeGuarded(native.name, input, signal, () => native.execute(id, input, signal, update, ctx));
+      },
+    } as any);
+  }
   pi.on('agent_end', () => {
     if (!record) return;
     // The contract cannot be reused by a background continuation or a resume.
@@ -56,6 +85,7 @@ export default function (pi: ExtensionAPI) {
     description: 'Run only a controller-approved check ID. No shell or custom arguments. At most two attempts per ID.',
     parameters: { type: 'object', properties: { id: { type: 'string' } }, required: ['id'], additionalProperties: false } as any,
     async execute(_id, params: any, signal) {
+      return executeGuarded('worker_check', params, signal, async () => {
       if (!record || record.stopped) throw new Error('No live worker contract');
       const check = record.checks.find((c: any) => c.id === params.id);
       if (!check) throw new Error('Unknown check ID');
@@ -84,6 +114,7 @@ export default function (pi: ExtensionAPI) {
       });
       return { content: [{ type: 'text', text: JSON.stringify(result) }], details: result,
         isError: result.timedOut || result.code !== 0 };
+      });
     },
   });
 }

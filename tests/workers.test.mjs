@@ -139,6 +139,8 @@ test('supervisor spawns through RPC in a separate worktree, exposes stop and blo
   await assert.rejects(pi.tools.get('start_worker').execute('', { task: 'T2', cwd: tree, writablePaths: ['src/'] }, null, null, { cwd: base }), /Unsafe/);
   rmSync(join(checkDir, 'supervised-worker.md'));
   assert.equal(pi.handlers.get('tool_call')({ toolName: 'Agent' }).block, true);
+  assert.equal(pi.handlers.get('tool_call')({ toolName: 'get_subagent_result', input: { wait: true } }).block, true);
+  assert.equal(pi.handlers.get('tool_call')({ toolName: 'get_subagent_result', input: { wait: false } }), undefined);
   await assert.rejects(pi.tools.get('start_worker').execute('', { task: 'T2', cwd: base, writablePaths: ['src/'] }, null, null, { cwd: base }), /separate/);
   const result = await pi.tools.get('start_worker').execute('', { task: 'T2 only', cwd: tree, writablePaths: ['src/'] }, null, null, { cwd: base });
   assert.equal(result.details.id, 'w1'); assert.equal(payload.options.maxTurns, 40); assert.equal(payload.options.isolation, 'off');

@@ -107,14 +107,19 @@ do not start unmanaged implementation agents there.
 
 - 40 agent turns (plus the configured grace turns in pi-subagents).
 - 80 total tool calls, 20 minutes wall-clock per contract.
-- A checkpoint after 10 calls or five minutes. The guard serializes tool batches
-  and pauses BEFORE the next tool. Until then status is `pause-requested`, not
+- A checkpoint after 10 calls or five minutes. The guard serializes actual tool execution
+  and pauses BEFORE the next execution. Preflight `tool_call` hooks never wait
+  for tool results: Pi can prepare an entire parallel batch before running it. Until then status is `pause-requested`, not
   proof of a quiescent snapshot. A model request may still be in flight.
 - Read/search/edit tools have a 30-second watchdog. Assigned checks have their
   own timeout, at most 600 seconds, with at most two executions per check ID.
 - Budget state is in a process-shared registry, not model context; neither
   compaction nor `continue_worker` resets cumulative limits. A completed/stopped
   contract cannot be reused by resume. After restarting Pi, create a new contract.
+
+Blocking `get_subagent_result(wait: true)` calls are rejected by the controller
+extension. They can prevent the parent from responding to a paused worker.
+Use notifications, `worker_status`, or a nonblocking result query instead.
 
 At a `paused` notification, the controller calls `worker_status`, then inspects
 the actual diff and untracked files against the task. The displayed recent
@@ -146,8 +151,12 @@ workflow. There is no automatic OpenAI review/fix loop in this change.
 
 ## Verification before unattended use
 
-`npm test` exercises policy, symlink escapes, cancellation/checkpoints, actual
-short-lived processes, and the RPC adapter with a mocked Pi event bus. It does
+`npm ci --ignore-scripts` installs the pinned Pi SDK locally; then `npm test`
+exercises policy, symlink escapes, cancellation/checkpoints, actual short-lived
+processes, and the RPC adapter with a mocked Pi event bus. Two regression tests
+use the real Pi agent loop in parallel mode with a deterministic, local fake
+model response containing twelve read calls: continuation and cancellation at
+the tenth completed execution must both work. No LLM or API key is needed. It does
 not establish end-to-end compatibility with a live local Pi/LLM installation.
 
 In a disposable worktree first verify: one allowed edit, one denied edit outside
@@ -163,3 +172,17 @@ authorizes the first unchecked task; supervised workers do not load that extensi
 at all. Auto-continuation recognizes the supervised worker marker as a second
 defence, but worker profiles load only the guard. Existing `pi-file-locks` and
 `safety-guard` extensions are not relied on as security boundaries.
+
+
+## Batch scheduling correction
+
+The first guard version acquired its execution lock in `tool_call` and released
+it in `tool_result`. That deadlocked a parallel batch: Pi first prepares all
+calls, and only then starts executing them. The active-tool watchdog correctly
+cancelled the resulting stall, but the stall itself was a guard defect.
+
+Admission, queueing, budgets and checkpoints now live in native-tool execution
+wrappers and release in `finally`, without waiting for result-delivery events.
+The hook performs only immediate policy checks. Parallel requests remain valid;
+the worker is not required to coax the model into emitting one tool per turn.
+The audit's executed-call count can differ from Pi's attempted-call count.
