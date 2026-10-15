@@ -32,8 +32,26 @@ function validateProfile(cwd: string, readOnly: boolean) {
 
 export default function (pi: ExtensionAPI) {
   const owned = new Map<string, any>();
+  const pendingNotifications = new Map<string, any>();
+  let controllerContext: { isIdle(): boolean; hasPendingMessages(): boolean } | undefined;
+  let shuttingDown = false;
   let spawnPending = false;
   let watchdog: ReturnType<typeof setInterval> | undefined;
+  function flushNotifications() {
+    // Keep these OUT of Pi's follow-up queue: queued snapshots cannot be withdrawn
+    // after the controller has already reviewed, resumed or stopped the worker.
+    if (shuttingDown || !controllerContext?.isIdle() || controllerContext.hasPendingMessages()) return;
+    for (const [token, notification] of pendingNotifications) {
+      const { record, event, sequence } = notification;
+      const current = !record.settled && record.notificationSequence === sequence &&
+        (event.kind === 'paused' ? !record.stopped && record.status === 'paused' : record.status === 'stop-requested');
+      pendingNotifications.delete(token);
+      if (!current) continue;
+      pi.sendMessage({ customType: 'worker-supervisor',
+        content: JSON.stringify({ ...event, sequence, worker: summary(record) }), display: true }, { triggerTurn: true });
+      break; // One actionable notification per controller run.
+    }
+  }
   function rpc(method: string, payload: any = {}, milliseconds = 3000): Promise<any> {
     const requestId = randomUUID();
     return new Promise((resolve, reject) => {
@@ -60,14 +78,20 @@ export default function (pi: ExtensionAPI) {
       block: true, reason: 'Use start_worker with an explicit bounded contract. Raw delegation bypasses supervision.',
     };
   });
-  pi.on('session_start', () => {
+  pi.on('session_start', (_event, ctx) => {
+    controllerContext = ctx;
+    shuttingDown = false;
     if (watchdog) clearInterval(watchdog);
-    watchdog = setInterval(() => { for (const record of owned.values()) tick(record); }, 1000);
+    watchdog = setInterval(() => {
+      for (const record of owned.values()) tick(record);
+      flushNotifications();
+    }, 1000);
     watchdog.unref?.();
   });
   const settled = (e: any) => {
     const record = owned.get(e.id);
     if (!record) return;
+    pendingNotifications.delete(record.token);
     closeRecord(record);
     record.settled = true;
     record.status = e.status ?? 'finished';
@@ -75,6 +99,8 @@ export default function (pi: ExtensionAPI) {
   pi.events.on('subagents:completed', settled);
   pi.events.on('subagents:failed', settled);
   pi.on('session_shutdown', () => {
+    shuttingDown = true;
+    pendingNotifications.clear();
     if (watchdog) clearInterval(watchdog);
     for (const record of owned.values()) { stop(record, 'Controller shutdown'); registry.delete(record.token); }
   });
@@ -85,6 +111,7 @@ export default function (pi: ExtensionAPI) {
       readOnly: { type: 'boolean' }, checks: { type: 'array', items: object({ id: string,
         executable: string, args: { type: 'array', items: string }, timeoutSeconds: { type: 'integer', minimum: 1, maximum: 600 } }, ['id', 'executable', 'args']) } }, ['task', 'cwd', 'writablePaths']),
     async execute(_id, params: any, _signal, _update, ctx) {
+      controllerContext = ctx;
       if (spawnPending) throw new Error('Another supervised start is in progress');
       spawnPending = true;
       try {
@@ -104,11 +131,14 @@ export default function (pi: ExtensionAPI) {
       if (root.code !== 0 || listed.code !== 0) throw new Error('Controller must run in a Git repository');
       const record = makeRecord({ root: params.cwd, task: params.task, paths: params.writablePaths,
         readOnly: params.readOnly, checks: params.checks }, event => {
+        const sequence = record.notificationSequence = (record.notificationSequence ?? 0) + 1;
         if (event.kind === 'stop-requested') {
           if (record.id) rpc('stop', { agentId: record.id }).catch(() => {});
         }
-        pi.sendMessage({ customType: 'worker-supervisor', content: JSON.stringify({ ...event, worker: summary(record) }),
-          display: true }, { triggerTurn: event.kind === 'paused' || event.kind === 'stop-requested', deliverAs: 'followUp' });
+        if (shuttingDown || record.controllerStopping) return;
+        if (event.kind === 'paused' || event.kind === 'stop-requested') {
+          pendingNotifications.set(record.token, { record, event, sequence });
+        }
       });
       const { canonical } = await import('./runtime.mjs');
       const worktrees = listed.stdout.split('\n').filter(l => l.startsWith('worktree ')).map(l => canonical(l.slice(9)));
@@ -142,10 +172,15 @@ export default function (pi: ExtensionAPI) {
     } });
   pi.registerTool({ name: 'continue_worker', label: 'Continue checked worker', description: 'After inspecting actual diff against task, release a paused worker. Does not reset total runtime or tool budget.',
     parameters: object({ id: string, review: string }, ['id', 'review']), async execute(_id, params: any) {
-      const record = lookup(params.id); approve(record, params.review); return reply(summary(record));
+      const record = lookup(params.id); approve(record, params.review);
+      pendingNotifications.delete(record.token); return reply(summary(record));
     } });
   pi.registerTool({ name: 'stop_worker', label: 'Stop worker', description: 'Revoke further tool access and abort via subagent RPC. Acknowledgement is not proof that OS children or blocked I/O have exited.',
     parameters: object({ id: string, reason: string }, ['id']), async execute(_id, params: any) {
-      const record = lookup(params.id); stop(record, params.reason); return reply(summary(record));
+      const record = lookup(params.id);
+      record.controllerStopping = true;
+      try { stop(record, params.reason); }
+      finally { record.controllerStopping = false; pendingNotifications.delete(record.token); }
+      return reply(summary(record));
     } });
 }

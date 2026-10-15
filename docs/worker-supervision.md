@@ -129,6 +129,15 @@ The latter revokes further tool access before aborting the model/RPC and the
 approved check's process group. Checkpoints do not automatically approve
 themselves. If the parent model cannot respond, the wall-clock cap still fires.
 
+The supervisor holds actionable notifications locally until the controller is idle
+and has no queued messages (checked once per second). It sends only a live `paused`
+or autonomous `stop-requested` event, identified by worker ID/token and a per-worker
+sequence number. Review/continue, explicit controller stop and terminal lifecycle
+events discard obsolete pending notifications. `checkpoint-requested` is an internal
+transition, not an extra LLM message; an explicit `stop_worker` does not wake its own
+controller again. Budget enforcement and stop RPCs still run immediately while the
+controller is busy. Other extensions' notifications are unaffected.
+
 No automatic budget extension: split remaining work into a newly reviewed task.
 Neither worker nor reviewer creates commits. The controller reviews, runs the
 required checks, and explicitly stages accepted files. Use an explicit reviewed

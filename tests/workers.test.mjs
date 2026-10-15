@@ -19,7 +19,7 @@ function api(events = bus()) {
   const handlers = new Map(), tools = new Map(), notifications = [];
   return { handlers, tools, notifications, events,
     on(n, f) { handlers.set(n, f); }, registerTool(t) { tools.set(t.name, t); },
-    sendMessage(m) { notifications.push(m); },
+    sendMessage(m, options) { notifications.push({ ...m, options }); },
     async exec(cmd, args, opts) { const r = spawnSync(cmd, args, { cwd: opts.cwd, encoding: 'utf8', timeout: opts.timeout }); return { code: r.status, stdout: r.stdout ?? '', stderr: r.stderr ?? '' }; },
   };
 }
@@ -147,4 +147,85 @@ test('supervisor spawns through RPC in a separate worktree, exposes stop and blo
   await pi.tools.get('stop_worker').execute('', { id: 'w1', reason: 'scope violation' });
   assert.equal(stopped, true); assert.equal(payload.options.signal.aborted, true);
   pi.handlers.get('session_shutdown')();
+});
+
+
+async function notificationFixture(t) {
+  t.mock.timers.enable({ apis: ['setInterval'] });
+  const base = setup().root;
+  spawnSync('git', ['init', base]);
+  writeFileSync(join(base, 'a'), 'base');
+  spawnSync('git', ['-C', base, 'add', 'a']);
+  spawnSync('git', ['-C', base, '-c', 'user.name=Test', '-c', 'user.email=test@example.com', 'commit', '-m', 'initial']);
+  const tree = join(base, 'worker-tree');
+  spawnSync('git', ['-C', base, 'worktree', 'add', tree, '-b', 'worker']);
+  const pi = api(); supervisor(pi);
+  const state = { idle: false, queued: false };
+  const ctx = { cwd: base, isIdle: () => state.idle, hasPendingMessages: () => state.queued };
+  for (const method of ['ping', 'spawn', 'stop']) pi.events.on('subagents:rpc:' + method, p => {
+    pi.events.emit(`subagents:rpc:${method}:reply:${p.requestId}`, { success: true, data: { id: 'notify-worker' } });
+  });
+  pi.handlers.get('session_start')({}, ctx);
+  t.after(() => pi.handlers.get('session_shutdown')());
+  const result = await pi.tools.get('start_worker').execute('', { task: 'Read files', cwd: tree, writablePaths: [], readOnly: true }, null, null, ctx);
+  const record = registry.get(result.details.token);
+  record.attached = true; record.checkpointTools = 1;
+  async function pause() {
+    await beforeTool(record, 'read', { path: 'a' }); finishTool(record);
+    const waiting = beforeTool(record, 'read', { path: 'a' });
+    await new Promise(resolve => setImmediate(resolve));
+    assert.equal(record.status, 'paused');
+    return { waiting };
+  }
+  return { pi, record, state, pause, poll: () => t.mock.timers.tick(1000) };
+}
+
+test('notifications wait for idle, discard reviewed checkpoints and deliver each live checkpoint once', async t => {
+  const { pi, record, state, pause, poll } = await notificationFixture(t);
+  const first = await pause(); poll();
+  assert.equal(pi.notifications.length, 0); // Busy controller: nothing enters Pi's queue.
+  await pi.tools.get('continue_worker').execute('', { id: record.id, review: 'Read-only audit reviewed' });
+  await first.waiting; finishTool(record);
+  state.idle = true; poll();
+  assert.equal(pi.notifications.length, 0); // Already handled pause is gone.
+  record.status = 'pause-requested';
+  const waiting = beforeTool(record, 'read', { path: 'a' });
+  await new Promise(resolve => setImmediate(resolve));
+  state.queued = true; poll(); assert.equal(pi.notifications.length, 0);
+  state.queued = false; poll(); poll();
+  assert.equal(pi.notifications.length, 1);
+  const message = pi.notifications[0], payload = JSON.parse(message.content);
+  assert.equal(payload.kind, 'paused'); assert.equal(payload.worker.id, record.id);
+  assert.equal(payload.worker.status, 'paused'); assert.equal(payload.sequence, 3);
+  assert.equal(message.options.triggerTurn, true); assert.equal(message.options.deliverAs, undefined);
+  await pi.tools.get('stop_worker').execute('', { id: record.id, reason: 'Controller reviewed and stopped' });
+  await assert.rejects(waiting, /stopped/);
+  poll(); assert.equal(pi.notifications.length, 1); // Own stop does not wake controller again.
+});
+
+test('notifications discard terminal checkpoints, but retain autonomous budget stops until controller is idle', async t => {
+  const { pi, record, state, pause, poll } = await notificationFixture(t);
+  const { waiting } = await pause();
+  // A watchdog stop supersedes the pending checkpoint while the controller is busy.
+  tick(record, record.deadline);
+  await assert.rejects(waiting, /stopped/);
+  poll(); assert.equal(pi.notifications.length, 0);
+  state.idle = true; poll(); poll();
+  assert.equal(pi.notifications.length, 1);
+  const payload = JSON.parse(pi.notifications[0].content);
+  assert.equal(payload.kind, 'stop-requested'); assert.equal(payload.sequence, 3);
+  assert.match(payload.reason, /Wall-clock/);
+  assert.equal(payload.worker.status, 'stop-requested');
+  pi.events.emit('subagents:failed', { id: record.id, status: 'stopped' });
+  poll(); assert.equal(pi.notifications.length, 1);
+});
+
+test('settlement drops an undelivered pause and shutdown does not notify the controller', async t => {
+  const { pi, record, state, pause, poll } = await notificationFixture(t);
+  const { waiting } = await pause();
+  pi.events.emit('subagents:completed', { id: record.id, status: 'completed' });
+  await assert.rejects(waiting, /stopped/);
+  state.idle = true; poll(); assert.equal(pi.notifications.length, 0);
+  pi.handlers.get('session_shutdown')(); poll();
+  assert.equal(pi.notifications.length, 0);
 });
