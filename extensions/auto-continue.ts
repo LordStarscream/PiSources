@@ -48,7 +48,7 @@ export default function (pi: ExtensionAPI) {
   // Wenn der Agent idle geht: bei Output-Limit automatisch fortsetzen.
   pi.on("agent_end", async (_event, ctx) => {
     // Zum Verifizieren des echten stopReason-Werts einmal einkommentieren:
-    // ctx.ui.notify(`agent_end stopReason: "${lastStopReason}"`, "info");
+    ctx.ui.notify(`agent_end stopReason: "${lastStopReason}"`, "info");
 
     const hitLimit = OUTPUT_LIMIT_REASONS.includes(lastStopReason);
 

@@ -1,16 +1,19 @@
 ---
 name: dev-env
 description: |
-  Development environment skill. SESSION START: search CWD/subdirs
-  for .pi/MEMORY.md — read it for context. For task state, consult the
-  task-planning skill (`.tasks/` folder). For memory, consult memory skill
-  (.pi/memory/). For knowledge, consult knowledge-base skill (.pi/knowledge/).
-  If an Aufgabe is in-progress, continue from it, NEVER ask what to do.
-  Uses pi-subagents for implementation work — small focused packets,
-  avoids output token limits, keeps orchestrator context lean.
+  SESSION START: search CWD/subdirs
+  for .pi/MEMORY.md — read it for context. Task state: task-planning
+  skill (`.tasks/`). Memory: memory skill (.pi/memory/). Knowledge:
+  knowledge-base skill (.pi/knowledge/). In-progress Aufgabe: continue
+  it, never ask what to do — EXCEPT pure status questions ("Wo waren
+  wir stehen geblieben?", "Wie ist der Stand?"): those go to the status
+  skill (read-only overview, no continuation).
+  Uses pi-subagents for implementation — small focused packets, keeps
+  context lean.
   WORKFLOW: 0) Init Memory → 1) Plan → 1.5) Bug Analysis (if bug report)
   → 1.6) App Smoke Check → 2) Project Memory → 3) Implement (subagents via task-planning) → 4) Tests →
-  5) Code Review → 6) Commit → 7) Push → 8) Knowledge Capture → 9) Documentation Update.
+  5) Code Review → 5.5) Fachlicher Review (optional) → 6) Commit → 7) Push →
+  8) Knowledge Capture → 9) Documentation Update.
   SEARCH: CWD-first. Anti-patterns: no web for project, no ask-what-next,
   no code without plan, no skip-tests, no push-without-permission,
   no large inline implementations, no full-file dumps into context.
@@ -71,6 +74,7 @@ Implementation work is delegated to **subagents** (pi-subagents) in small, focus
 | Write/modify a file (>30 lines of change) | ✅ yes |
 | Implement a component/route/module | ✅ yes |
 | Write a test suite | ✅ yes |
+| Fachlicher Review nach Umsetzung (Anforderung ↔ Code, Phase 5.5) | ✅ yes — unabhängiger Agent, frischer Kontext |
 | Bulk analysis of many files ("find all usages of X and evaluate") | ✅ yes — returns summary |
 | Large refactoring across files | ✅ yes — one subagent per file |
 | Read one file section | ❌ no — direct |
@@ -131,6 +135,8 @@ The first match is your `PROJECT_ROOT`.
 Read `.pi/MEMORY.md` — it contains project context, tech stack, architecture, known issues.
 
 For task state, consult the **task-planning** skill: check if `.tasks/_index.md` exists and find the active Aufgabe. If an Aufgabe is `in-progress` (status `aktiv`), continue from it.
+
+**Statusfragen sind keine Umsetzungsaufträge:** Reine Statusfragen („Wo waren wir stehen geblieben?", „Was ist offen?", „Wie ist der Stand?", „Was wäre der nächste Schritt?") werden nach dem **status-Skill** beantwortet — ausschließlich lesend, kurze Übersicht, danach Stopp. Der aktive `in-progress`-Zustand einer Aufgabe ist dabei nur eine Information, kein Grund, die Implementierung fortzusetzen.
 
 **If no project memory or tasks exist:** proceed normally — you will create memory in Phase 2 and tasks via the task-planning skill after an approved plan.
 
@@ -336,6 +342,31 @@ Review modified files — **one file at a time**, via `git diff <file>` (not ful
 - Issues found? Fix and re-run tests (back to Phase 4)
 - For reviews spanning many files: review subagent per layer, returns findings list
 
+### Phase 5.5: Fachlicher Review (Anforderung ↔ Code) — optional, wird gefragt
+
+**Ziel:** Unabhängige fachliche Abnahme — erfüllt der Code die **Anforderung** (Semantik, Regeln, Abnahmekriterien)?
+Das ist etwas anderes als Phase 5: dort geht es um Code-Qualität (Namen, Style, Edge Cases),
+hier um **Anforderungsdeckung** — Punkt für Punkt.
+
+1. **Nachfrage vor dem Commit (nie still ausführen, nie still überspringen):**
+   > "Umsetzung fertig, Tests grün. Soll ein unabhängiger Review-Agent einen fachlichen Review durchführen (Anforderung ↔ Code, Abnahmekriterium um Abnahmekriterium)?"
+   - **Subagenten verfügbar** → Frage stellen; nur bei Ja durchführen.
+   - **Kein Subagent-Tool in der Umgebung** → vereinfachte Variante inline: die Abnahmekriterien der Aufgabe Punkt für Punkt gegen den Diff abgleichen und das Ergebnis als solche kennzeichnen (kein "unabhängiger Agent").
+
+2. **Ja → unabhängiges Review-Subagent** (frischer Kontext, **kein** `inherit_context`, keine Implementierungshistorie):
+   - **Input (nur das Nötige):**
+     - Anforderung: der relevante Plan-/Aufgabenabschnitt mit den Abnahmekriterien, wortgetreu
+     - Code: Liste der geänderten/neuen Files + `git diff` (bei neuem Projekt: die Files)
+     - Kurz-Kontext: relevante Regeln/Schnittstellen des Projekts (max. ein paar Zeilen)
+   - **Auftrag:** "Prüfe jedes Abnahmekriterium: Ist es im Code umgesetzt? Stimmt die Semantik? Was fehlt, was weicht ab? Ergebnis als Liste: `erfüllt` / `nicht erfüllt` / `abweichend` / `unklar` — je Eintrag mit Datei/Zeile und Begründung."
+   - Das Review-Subagent ist ein **Analyse-Agent** (darf die gelisteten Files lesen); es kennt bewusst weder die Konversation noch die Implementierungsentscheidungen — es vergleicht nur Anforderung und Code.
+
+3. **Findings verarbeiten:**
+   - Ergebnis dem User als kurze Liste zeigen
+   - `nicht erfüllt` / `abweichend` → fixen (Phase 3 → 4, Tests neu), danach Review erneut anbieten
+   - `unklar` → mit User klären, dann nachziehen
+   - Alle `erfüllt` → weiter mit Phase 6
+
 ### Phase 6: Commit (if git exists)
 
 - Check `git status --porcelain` — if empty, skip and report `"No changes to commit."`
@@ -391,10 +422,11 @@ Folge dem **knowledge-base-Skill Modus B**:
 - **Plan before implementing** — never start coding without a written plan
 - **Analyze before fixing** — bugs: investigate, discuss, then fix (Phase 1.5)
 - **Read session files first** — at start, read `.pi/MEMORY.md` and the active Aufgabe from the task-planning skill before asking anything
-- **If the active Aufgabe is `in-progress`** → continue from first unchecked step, NEVER ask what to do
+- **If the active Aufgabe is `in-progress`** → continue from first unchecked step, NEVER ask what to do (Ausnahme: reine Statusfragen → **status-Skill**, nur lesend, keine Fortsetzung)
 - **Create project memory** — long-term context for the project
 - **Tests before review** — correctness first, quality second
 - **Delegate implementation to subagents** — orchestrator stays lean
+- **Fachlicher Review wird gefragt, nie still** — nach Phase 5, vor Commit: User fragen, ob ein unabhängiger Review-Agent (frischer Kontext) Anforderung ↔ Code prüft (Phase 5.5)
 - **Protect the context budget** — targeted reads, summarized output, analysis subagents
 - **Be proactive** in CWD search
 - **Be thorough** — search multiple types/locations
@@ -419,6 +451,7 @@ Folge dem **knowledge-base-Skill Modus B**:
 - **Skipping tests** — Must run and pass before review
 - **Code review before tests** — Fix correctness first, then review quality
 - **Pushing without permission** — Always ask first
+- **Fachlicher Review vom Implementierenden** — Die Abnahme Anforderung ↔ Code macht ein unabhängiger Agent ohne Implementierungskontext (oder, falls kein Subagent verfügbar, wird die Inline-Variante als solche gekennzeichnet)
 - **Committing without checking for changes** — Only commit if actual changes exist
 - **Large inline implementations** — Anything >30 lines of change goes to a subagent
 - **Implementation subagents exploring the codebase** — They implement with the provided context; only analysis subagents explore. Parallel agents re-reading the same files multiplies token cost and runtime.
