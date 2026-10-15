@@ -60,7 +60,30 @@ cp extensions/<file> ~/.pi/agent/extensions/
 
 ### Active skills (`~/.pi/agent/skills/`)
 
-All 8 skills from the table above are installed: `dev-env`, `status`, `spec-to-app`, `task-planning`, `memory`, `knowledge-base`, `graphify`, `web-bash`.
+All 8 skills from the table above are installed: `dev-env`, `status`, `spec-to-app`, `task-planning`, `memory`, `knowledge-base`, `graphify`, `web-bash`. Plus the `chatgpt` skill, which ships with the `pi-gpt` package (see below).
+
+### Installed pi packages (third-party)
+
+Declared in `~/.pi/agent/settings.json` → `packages`. These are managed by pi itself (updated via pi package updates) — **not** synced from this repo.
+
+| Package | Source | Version | Install location | Provides |
+|---------|--------|---------|------------------|----------|
+| `@tintinweb/pi-subagents` | `git:github.com/tintinweb/pi-subagents` | 0.22.0 | `~/.pi/agent/git/github.com/tintinweb/pi-subagents/` | Claude-Code-like subagents + workflow orchestration: `Agent` tool (parallel/background subagents, worktree isolation, resume, mid-run steering), `SubagentWorkflow` (deterministic multi-agent scripts), `get_subagent_result`, `steer_subagent`, live fleet view, custom agent types from `.pi/agents/*.md`, `bindExtensions` (extensions also run in child sessions) |
+| `pi-gpt` | `npm:pi-gpt` | 0.4.3 | `~/.pi/agent/npm/node_modules/pi-gpt/` | Drives the ChatGPT/Codex account as pi tools (reuses `codex login`, no API key): `gpt_chat` (normal / agent / deep research), `gpt_list_models`, `gpt_list_chats`, `gpt_get_conversation`, `gpt_get_message`, `gpt_account_status` + `chatgpt` skill + observer extension |
+
+### MCP servers
+
+Declared in `~/.pi/agent/mcp.json`.
+
+| Server | Command | Notes |
+|--------|---------|-------|
+| `context-mode` | `npx -y context-mode` | Session stats stored in `~/.pi/context-mode/sessions/` |
+
+### Settings highlights (`~/.pi/agent/settings.json`)
+
+- Default provider/model: `llama-cpp` / `*`
+- Compaction: `reserveTokens: 16384`, `keepRecentTokens: 10000`
+- `enableSkillCommands: true` (enables `/skill:<name>` commands)
 
 ### Custom agents (`~/.pi/agent/agents/`)
 
