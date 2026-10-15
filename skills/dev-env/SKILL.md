@@ -19,6 +19,25 @@ description: |
   no large inline implementations, no full-file dumps into context.
 ---
 
+## Rollen- und Auftragsgrenze (Vorrang vor dem folgenden Gesamtworkflow)
+
+- Der Gesamtworkflow richtet sich ausschließlich an die Hauptsession.
+- Worker erhalten nur ihren aktuellen Teilauftrag. Projektplan, offene Tasks,
+  Session-Recovery und Kontextkompaktion erteilen keine zusätzliche Freigabe.
+- Für Delegation `start_worker` mit genauem Auftrag, erlaubten Änderungspfaden
+  und einem von der Hauptsession vorbereiteten separaten Worktree verwenden.
+- Worker erstellen keine Commits und ändern weder `.tasks/`, Steuerdateien
+  noch Designvorgaben. Nach Erfüllung des Teilauftrags stoppen sie.
+- Nach zwei erfolglosen Korrekturversuchen den Blocker melden; kein endloses
+  „bis alles grün ist“. Prüfungen immer mit technischem Timeout ausführen.
+- Bei einem Supervisor-Kontrollpunkt `worker_status` und den tatsächlichen Diff
+  einschließlich neuer Dateien gegen den Auftrag prüfen. Erst danach mit
+  `continue_worker` und konkreter Review-Begründung fortsetzen oder `stop_worker`.
+- Nur die Hauptsession aktualisiert Tasks und committet, nach eigener Prüfung.
+  Ausschließlich geprüfte Dateien gezielt stagen, kein pauschales `git add -A`.
+- Statusfragen ausschließlich nach dem Status-Skill beantworten.
+
+
 # Development Environment Skill
 
 ## CRITICAL — Always Execute This First
@@ -134,7 +153,7 @@ The first match is your `PROJECT_ROOT`.
 
 Read `.pi/MEMORY.md` — it contains project context, tech stack, architecture, known issues.
 
-For task state, consult the **task-planning** skill: check if `.tasks/_index.md` exists and find the active Aufgabe. If an Aufgabe is `in-progress` (status `aktiv`), continue from it.
+For task state, consult the **task-planning** skill: check if `.tasks/_index.md` exists and find the active Aufgabe. An active Aufgabe supplies context; continue only the scope currently authorized by the user.
 
 **Statusfragen sind keine Umsetzungsaufträge:** Reine Statusfragen („Wo waren wir stehen geblieben?", „Was ist offen?", „Wie ist der Stand?", „Was wäre der nächste Schritt?") werden nach dem **status-Skill** beantwortet — ausschließlich lesend, kurze Übersicht, danach Stopp. Der aktive `in-progress`-Zustand einer Aufgabe ist dabei nur eine Information, kein Grund, die Implementierung fortzusetzen.
 
@@ -327,7 +346,7 @@ Drei Speicher-Konzepte existieren parallel (volle Details im memory-Skill):
 - **All tests must pass**. If failing:
   1. Read failure output (tail/grep — not full logs), diagnose root cause
   2. Fix code (subagent for larger fixes, direct edit for small ones)
-  3. Re-run until green
+  3. After at most two failed repair attempts, stop and report the blocker
 - **Do NOT proceed if tests failing**
 
 ### Phase 5: Code Review
@@ -370,7 +389,7 @@ hier um **Anforderungsdeckung** — Punkt für Punkt.
 ### Phase 6: Commit (if git exists)
 
 - Check `git status --porcelain` — if empty, skip and report `"No changes to commit."`
-- If changes exist: `git add -A && git commit -m "<descriptive message>"`
+- If changes exist: `git add -- <geprüfte-Dateien>`, danach `git diff --cached` prüfen und erst dann committen
 - Follow conventional commits: `feat:`, `fix:`, `refactor:`, `test:`
 
 ### Phase 7: Push (if remote exists — NEVER without permission)
@@ -422,7 +441,7 @@ Folge dem **knowledge-base-Skill Modus B**:
 - **Plan before implementing** — never start coding without a written plan
 - **Analyze before fixing** — bugs: investigate, discuss, then fix (Phase 1.5)
 - **Read session files first** — at start, read `.pi/MEMORY.md` and the active Aufgabe from the task-planning skill before asking anything
-- **If the active Aufgabe is `in-progress`** → continue from first unchecked step, NEVER ask what to do (Ausnahme: reine Statusfragen → **status-Skill**, nur lesend, keine Fortsetzung)
+- **If the active Aufgabe is `in-progress`** → continue only within the currently authorized scope; do not infer worker authority from unchecked tasks (Ausnahme: reine Statusfragen → **status-Skill**, nur lesend, keine Fortsetzung)
 - **Create project memory** — long-term context for the project
 - **Tests before review** — correctness first, quality second
 - **Delegate implementation to subagents** — orchestrator stays lean

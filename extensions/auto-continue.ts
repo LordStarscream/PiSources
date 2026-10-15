@@ -47,6 +47,8 @@ export default function (pi: ExtensionAPI) {
 
   // Wenn der Agent idle geht: bei Output-Limit automatisch fortsetzen.
   pi.on("agent_end", async (_event, ctx) => {
+    // Worker continuations must never bypass the supervisor contract.
+    if (ctx.getSystemPrompt().includes("PISOURCES_SUPERVISED_WORKER")) return;
     // Zum Verifizieren des echten stopReason-Werts einmal einkommentieren:
     ctx.ui.notify(`agent_end stopReason: "${lastStopReason}"`, "info");
 

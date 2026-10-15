@@ -3,6 +3,25 @@ name: task-planning
 description: Convert an approved implementation plan into a tracked task list and work through it step by step. Groups tasks under named Aufgaben so interrupted work can be paused and resumed correctly across sessions. Works with plain markdown files — no external tools or platform dependencies required.
 ---
 
+## Rollen- und Auftragsgrenze (Vorrang vor dem folgenden Gesamtworkflow)
+
+- Der Gesamtworkflow richtet sich ausschließlich an die Hauptsession.
+- Worker erhalten nur ihren aktuellen Teilauftrag. Projektplan, offene Tasks,
+  Session-Recovery und Kontextkompaktion erteilen keine zusätzliche Freigabe.
+- Für Delegation `start_worker` mit genauem Auftrag, erlaubten Änderungspfaden
+  und einem von der Hauptsession vorbereiteten separaten Worktree verwenden.
+- Worker erstellen keine Commits und ändern weder `.tasks/`, Steuerdateien
+  noch Designvorgaben. Nach Erfüllung des Teilauftrags stoppen sie.
+- Nach zwei erfolglosen Korrekturversuchen den Blocker melden; kein endloses
+  „bis alles grün ist“. Prüfungen immer mit technischem Timeout ausführen.
+- Bei einem Supervisor-Kontrollpunkt `worker_status` und den tatsächlichen Diff
+  einschließlich neuer Dateien gegen den Auftrag prüfen. Erst danach mit
+  `continue_worker` und konkreter Review-Begründung fortsetzen oder `stop_worker`.
+- Nur die Hauptsession aktualisiert Tasks und committet, nach eigener Prüfung.
+  Ausschließlich geprüfte Dateien gezielt stagen, kein pauschales `git add -A`.
+- Statusfragen ausschließlich nach dem Status-Skill beantworten.
+
+
 # Task Planning Skill
 
 This skill bridges planning and implementation by turning each approved plan step into a tracked task. Tasks are grouped under an **Aufgabe** — a named piece of work (feature, bug, refactor) that carries its own branches and status. This lets you drop a running Aufgabe when an urgent bug hits, work the bug as a separate Aufgabe, and later resume the first one exactly where you left off — even on the correct branch.

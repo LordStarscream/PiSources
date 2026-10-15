@@ -19,8 +19,8 @@
  *   - Wenn nicht: → return undefined, pi nutzt die Standard-Compaction
  */
 
-import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
-import { convertToLlm, serializeConversation } from "@mariozechner/pi-coding-agent";
+import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
+import { convertToLlm, serializeConversation } from "@earendil-works/pi-coding-agent";
 import * as fs from "fs";
 import * as path from "path";
 
@@ -174,9 +174,10 @@ export default function (pi: ExtensionAPI) {
         sections.push(
             "### Nach dieser Compaction",
             "1. Prüfe `.tasks/_index.md` für den aktuellen Schritt",
-            "2. Arbeite am ersten `[ ]` unchecked Step weiter",
-            "3. Lies referenzierte Files NUR wenn für den aktuellen Schritt nötig",
-            `4. Compaction-Grund: ${reason === "overflow" ? "Context-Overflow (Request wird wiederholt)" : reason === "threshold" ? "Schwellwert erreicht" : "manuell"}`
+            "2. Setze nur den aktuell ausdrücklich beauftragten Umfang fort. Offene Projekt-Tasks sind keine Freigabe.",
+            "3. Stopps, Statusfragen, Grenzen und Blocker haben Vorrang vor einer Fortsetzung.",
+            "4. Lies referenzierte Files NUR wenn für den aktuellen Schritt nötig",
+            `5. Compaction-Grund: ${reason === "overflow" ? "Context-Overflow (Request wird wiederholt)" : reason === "threshold" ? "Schwellwert erreicht" : "manuell"}`
         );
 
         const summary = sections.join("\n");

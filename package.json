@@ -1,14 +1,35 @@
 {
   "name": "pi-dev-environment",
   "version": "0.1.0",
-  "description": "Development environment skill and extensions for pi agent — cwd-first file search with web search for concepts",
-  "keywords": ["pi-package", "developer", "environment", "web-search"],
+  "description": "Development environment skill and extensions for pi agent \u2014 cwd-first file search with web search for concepts",
+  "keywords": [
+    "pi-package",
+    "developer",
+    "environment",
+    "web-search"
+  ],
   "pi": {
-    "skills": ["./skills"],
-    "extensions": ["./extensions"]
+    "skills": [
+      "./skills"
+    ],
+    "extensions": [
+      "./extensions"
+    ],
+    "subagents": {
+      "agents": [
+        "./docs/agents"
+      ]
+    }
   },
   "dependencies": {},
   "peerDependencies": {
-    "@mariozechner/pi-coding-agent": "*"
+    "@earendil-works/pi-coding-agent": ">=1.1.0"
+  },
+  "scripts": {
+    "test": "node --test tests/*.test.mjs",
+    "check": "npm test"
+  },
+  "engines": {
+    "node": ">=22.19"
   }
 }

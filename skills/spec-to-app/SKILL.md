@@ -7,8 +7,27 @@ description: |
   4) Scaffold → 5) Data Layer → 6) API Routes → 7) Pages & Layout → 8) Styling →
   9) Unit Tests → 10) Fix → 11) Code Review → 12) Functional Tests →
   13) Fix → 14) Build Verification → 15) Decision Report.
-  NEVER asks what to do. NEVER stops early. Runs to completion.
+  NEVER asks what to do. Completes only the authorized scope; stops on budget, cancellation or blocker.
 ---
+
+## Rollen- und Auftragsgrenze (Vorrang vor dem folgenden Gesamtworkflow)
+
+- Der Gesamtworkflow richtet sich ausschließlich an die Hauptsession.
+- Worker erhalten nur ihren aktuellen Teilauftrag. Projektplan, offene Tasks,
+  Session-Recovery und Kontextkompaktion erteilen keine zusätzliche Freigabe.
+- Für Delegation `start_worker` mit genauem Auftrag, erlaubten Änderungspfaden
+  und einem von der Hauptsession vorbereiteten separaten Worktree verwenden.
+- Worker erstellen keine Commits und ändern weder `.tasks/`, Steuerdateien
+  noch Designvorgaben. Nach Erfüllung des Teilauftrags stoppen sie.
+- Nach zwei erfolglosen Korrekturversuchen den Blocker melden; kein endloses
+  „bis alles grün ist“. Prüfungen immer mit technischem Timeout ausführen.
+- Bei einem Supervisor-Kontrollpunkt `worker_status` und den tatsächlichen Diff
+  einschließlich neuer Dateien gegen den Auftrag prüfen. Erst danach mit
+  `continue_worker` und konkreter Review-Begründung fortsetzen oder `stop_worker`.
+- Nur die Hauptsession aktualisiert Tasks und committet, nach eigener Prüfung.
+  Ausschließlich geprüfte Dateien gezielt stagen, kein pauschales `git add -A`.
+- Statusfragen ausschließlich nach dem Status-Skill beantworten.
+
 
 # Spec-to-App Generation Skill
 
@@ -291,7 +310,7 @@ Document any assumptions in `.pi/MEMORY.md` under "Spec Interpretations" AND as 
 ## Anti-Patterns (forbidden)
 
 - **Asking the user for implementation decisions** — The spec is the source of truth.
-- **Stopping early** — Implement everything in the spec, even if simple.
+- **Expanding worker scope** — Implement only the assigned unit, never the remaining spec.
 - **Skipping tests** — No untested code. Period.
 - **Skipping code review** — Every file must be reviewed.
 - **Skipping decision logging** — Every non-trivial decision must be logged immediately.
@@ -318,7 +337,7 @@ If a session is interrupted and resumes:
 1. **Read `.tasks/_index.md`** — check which Aufgabe and step was in progress.
 2. **Read `.pi/MEMORY.md`** — recover context, decisions, assumptions.
 3. **Read `.pi/decisions/`** — review decisions already logged to avoid re-making them.
-4. **Continue from the first `[ ]` unchecked step** — never restart.
+4. **Recover the currently authorized scope** — unchecked project steps are context, not permission for a worker to continue.
 5. **Verify build still passes** if it was passing before interruption.
 6. **Verify tests still pass** if they were passing before interruption.
 
